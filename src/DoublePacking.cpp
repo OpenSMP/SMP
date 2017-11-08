@@ -29,9 +29,9 @@ public:
             std::vector<NTL::ZZX> polys;
             for (int x = 0; x < MAX_X; x++) {
                 internal::BlockId blk{x, y};
-                std::vector<NTL::ZZX> slots = internal::partition(matrix, blk, packer, backward);
+                auto packed_rows = internal::partition(matrix, blk, packer, backward);
                 NTL::ZZX poly;
-                packer.encode(poly, slots);
+                packer.encode(poly, packed_rows.polys);
                 polys.emplace_back(poly);
             }
             packed_.emplace_back(polys);

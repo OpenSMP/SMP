@@ -8,12 +8,25 @@ static inline long round_div(long a, long b) {
     return (a + b - 1) / b;
 }
 
+static void duplicate(PackedRows &pr, long used) {
+    size_t sze = pr.polys.size();
+    if (used <= 0)
+        return ;
+    long num_copies = sze / used;
+    if (num_copies <= 1) // no enough space
+        return;
+    for (long offset = used; offset < sze; offset += used) {
+        for (long j = 0; offset + j < sze; j++) {
+            pr.polys[offset + j] = pr.polys[j];
+            pr.row_indices[offset + j] = pr.row_indices[j];
+        }
+    }
+}
+
 /// Partition one block of the matrix into each slot of CRT packing. 
 /// That is one row of the block matrix as one slot (i.e., poly).
-std::vector<NTL::ZZX> partition(Matrix const& matrix, 
-                                BlockId const& blk, 
-                                Packer const& packer,
-                                const bool backward) {
+PackedRows partition(Matrix const& matrix, BlockId const& blk, 
+                     Packer const& packer, const bool backward) {
     const long d = packer.getDegree(); /// degree of the slot
     const long l = packer.size(); /// number of slots
     const long MAX_X = round_div(matrix.NumRows(), l);
@@ -26,21 +39,22 @@ std::vector<NTL::ZZX> partition(Matrix const& matrix,
     const long col_start = blk.y * d;
     const long col_end = std::min(col_start + d, matrix.NumCols());
 
-    /// Some of the polynomial might not be used, but we still
-    /// allocate l of them because we need to encode l polys when
-    /// doing the CRT packing.
-    std::vector<NTL::ZZX> polys(l);
+    PackedRows ret;
+    ret.polys.resize(l);
+    ret.row_indices.resize(l, -1);
     for (long row = row_start; row < row_end; row++) {
         const long offset = row - row_start;
-        polys[offset].SetLength(d);
+        ret.polys[offset].SetLength(d);
         for (long col = col_start; col < col_end; col++) {
             /// coeff = backward ? d - 1 - (col - col_start) : col - col_start;
             long coeff = col - col_start;
             if (backward)
                 coeff = d - 1 - coeff;
-            NTL::SetCoeff(polys[offset], coeff, matrix[row][col]);
+            NTL::SetCoeff(ret.polys[offset], coeff, matrix[row][col]);
         }
+        ret.row_indices[offset] = row;
     }
-    return polys;
+    duplicate(ret, row_end - row_start);
+    return std::move(ret);
 }
 } // namespace internal

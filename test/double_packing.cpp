@@ -64,7 +64,7 @@ TEST_F(DoublePackingTest, PackForward) {
     for (int x = 0; x < MAX_X; x++) {
         for (int y = 0; y < MAX_Y; y++) {
             blk = {x, y};
-            auto polys = internal::partition(mat, blk, *ea, false);
+            auto polys = internal::partition(mat, blk, *ea, false).polys;
 
             const long row_start = blk.x * l;
             const long row_end = std::min(row_start + l, mat.NumRows());
@@ -96,7 +96,7 @@ TEST_F(DoublePackingTest, PackBackward) {
     for (int x = 0; x < MAX_X; x++) {
         for (int y = 0; y < MAX_Y; y++) {
             blk = {x, y};
-            auto polys = internal::partition(mat, blk, *ea, true);
+            auto polys = internal::partition(mat, blk, *ea, true).polys;
 
             const long row_start = blk.x * l;
             const long row_end = std::min(row_start + l, mat.NumRows());
@@ -136,11 +136,11 @@ TEST_F(DoublePackingTest, GMM) {
             for (int k = 0; k < MAX_X2; k++) {
                 internal::BlockId blk1 = {x, k};
                 internal::BlockId blk2 = {k, y};
-                std::vector<NTL::ZZX> polys = internal::partition(mat, blk1, *ea, true);
+                std::vector<NTL::ZZX> polys = internal::partition(mat, blk1, *ea, true).polys;
                 NewPlaintextArray pA1(*ea); 
                 encode(*ea, pA1, polys);
 
-                polys = internal::partition(matT, blk2, *ea, false);
+                polys = internal::partition(matT, blk2, *ea, false).polys;
                 NewPlaintextArray pA2(*ea);
                 encode(*ea, pA2, polys);
 

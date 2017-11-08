@@ -21,10 +21,16 @@ namespace internal {
     struct BlockId {
         int x, y; 
     };
-    std::vector<NTL::ZZX> partition(Matrix const& matrix, 
-                                    BlockId const& blk, 
-                                    Packer const& packer,
-                                    const bool backward);
+
+    struct PackedRows {
+        std::vector<NTL::ZZX> polys;
+        std::vector<size_t> row_indices;
+    };
+
+    PackedRows partition(Matrix const& matrix, 
+                         BlockId const& blk, 
+                         Packer const& packer,
+                         const bool backward);
 }
 
 class DoublePackedMat {
