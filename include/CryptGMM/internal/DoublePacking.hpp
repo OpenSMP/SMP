@@ -1,5 +1,4 @@
 #include "CryptGMM/Matrix.hpp"
-
 #include "HElib/EncryptedArray.h"
 namespace NTL { class ZZX; }
 namespace internal 
@@ -16,11 +15,10 @@ static void duplicate(PackedRows &pr, long used) {
     if (num_copies <= 1) // no enough space
         return;
     for (long offset = used; offset < sze; offset += used) {
-        for (long j = 0; offset + j < sze; j++) {
+        for (long j = 0; offset + j < sze; j++)
             pr.polys[offset + j] = pr.polys[j];
-            pr.row_indices[offset + j] = pr.row_indices[j];
-        }
     }
+    pr.num_duplication = num_copies;
 }
 
 /// Partition one block of the matrix into each slot of CRT packing. 
@@ -41,7 +39,7 @@ PackedRows partition(Matrix const& matrix, BlockId const& blk,
 
     PackedRows ret;
     ret.polys.resize(l);
-    ret.row_indices.resize(l, -1);
+    ret.num_duplication = 1;
     for (long row = row_start; row < row_end; row++) {
         const long offset = row - row_start;
         ret.polys[offset].SetLength(d);
@@ -52,7 +50,6 @@ PackedRows partition(Matrix const& matrix, BlockId const& blk,
                 coeff = d - 1 - coeff;
             NTL::SetCoeff(ret.polys[offset], coeff, matrix[row][col]);
         }
-        ret.row_indices[offset] = row;
     }
     duplicate(ret, row_end - row_start);
     return std::move(ret);

@@ -24,7 +24,7 @@ namespace internal {
 
     struct PackedRows {
         std::vector<NTL::ZZX> polys;
-        std::vector<size_t> row_indices;
+        long num_duplication;
     };
 
     PackedRows partition(Matrix const& matrix, 
