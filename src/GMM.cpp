@@ -1,3 +1,4 @@
+/// General Matrix Multiplication
 #include <HElib/FHE.h>
 #include <HElib/FHEContext.h>
 #include <HElib/EncryptedArray.h>

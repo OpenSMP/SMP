@@ -12,7 +12,6 @@ set(RUNTIME_LIBS
 
 set(CPP_ITESTS
     double_packing 
-    trial_error
     test_net_io
     )
 
