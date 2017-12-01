@@ -4,26 +4,19 @@
 
 #ifndef CRYPTGMM_DOUBLEPACKING_HPP
 #define CRYPTGMM_DOUBLEPACKING_HPP
-#include "CryptGMM/CowPtr.hpp"
 #include "CryptGMM/Matrix.hpp"
 #include "NTL/ZZX.h"
 #include <vector>
 
-class Ctxt;
-class FHEPubKey;
 class FHESecKey;
-class EncryptedArray;
-class GMMController;
-
-typedef EncryptedArray Packer;
-typedef CowPtr<Ctxt> Cipher;
+using Packer = EncryptedArray;
 namespace internal {
     struct BlockId {
         int x, y; 
     };
 
     struct PackedRows {
-        std::vector<NTL::ZZX> polys;
+        std::vector<NTL::zz_pX> polys;
         long num_duplication;
     };
 
@@ -32,31 +25,5 @@ namespace internal {
                          Packer const& packer,
                          const bool backward);
 }
-
-class DoublePackedMat {
-public:
-    DoublePackedMat();
-
-    ~DoublePackedMat();
-
-    void pack(Matrix const& matrix, Packer const& packer);
-
-    void encrypt(Matrix const&matrix, FHEPubKey const& key);
-
-    void encrypt(Matrix const&matrix, FHESecKey const& key);
-
-    long num_rows() const;
-
-    long num_cols() const;
-
-    bool load(std::istream &stream);
-
-    bool save(std::ostream &stream) const;
-
-    friend class GMMController;
-protected:
-    class Imp;
-    CowPtr<Imp> imp_;
-};
-
+#include "CryptGMM/internal/DoublePacking.hpp"
 #endif //CRYPTGMM_DOUBLEPACKING_HPP

@@ -71,6 +71,21 @@ bool is_same(const Matrix &a, const Matrix &b) {
     return true;
 }
 
+bool is_same(const Matrix &a, const Matrix &b, long modulus) {
+    if (a.NumRows() != b.NumRows() || a.NumCols() != b.NumCols())
+        return false;
+    for (long r = 0; r < a.NumRows(); r++) {
+        for (long c = 0; c < a.NumCols(); c++) {
+            long diff = (a[r][c] - b[r][c]) % modulus;
+            if (diff != 0) {
+                std::cerr << a[r][c] << "!=" << b[r][c] << "(" << r << "," << c << ")" << std::endl;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 PlainVec mul(const Matrix &m, const PlainVec &v) {
     assert(m.NumCols() == v.length());
     PlainVec result;

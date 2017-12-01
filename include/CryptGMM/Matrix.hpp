@@ -16,6 +16,7 @@ Matrix mul(const Matrix &a, const Matrix &b);
 void add(PlainVec *a, const PlainVec &b);
 void transpose(Matrix *T, const Matrix &mat);
 bool is_same(const Matrix &a, const Matrix &b);
+bool is_same(const Matrix &a, const Matrix &b, long modulus);
 bool load_matrix(Matrix *mat, const std::string &file);
 bool load_matrix(std::istream& in, Matrix *mat);
 bool save_matrix(const Matrix &mat, const std::string &file);

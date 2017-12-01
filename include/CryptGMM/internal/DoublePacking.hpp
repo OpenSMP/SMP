@@ -48,10 +48,12 @@ PackedRows partition(Matrix const& matrix, BlockId const& blk,
             long coeff = col - col_start;
             if (backward)
                 coeff = d - 1 - coeff;
-            NTL::SetCoeff(ret.polys[offset], coeff, matrix[row][col]);
+            NTL::SetCoeff(ret.polys[offset], 
+                          coeff, 
+                          matrix[row][col]);
         }
     }
     duplicate(ret, row_end - row_start);
-    return std::move(ret);
+    return ret;
 }
 } // namespace internal
