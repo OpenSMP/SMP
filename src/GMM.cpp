@@ -321,7 +321,7 @@ int run_client(long n1, long n2, long n3) {
     }
     const long m = 8192;
     //const long p = 401;
-    const long p = 641;
+    const long p = 769;
     const long r = 1;
     const long L = 4;
     NTL::zz_p::init(p);
