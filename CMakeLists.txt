@@ -18,13 +18,3 @@ add_subdirectory(src)
 enable_testing()
 find_package(GTest REQUIRED)
 add_subdirectory(test)
-# add_subdirectory(docopt)
-
-# add_executable(Mat2DoublePacking Mat2DoublePacking.cpp)
-# target_link_libraries(Mat2DoublePacking cryptconv helib ntl pthread gmp)
-#
-# add_executable(client_cil client.cpp client_daemon.cpp include/config.h)
-# target_link_libraries(client_cil docopt cryptconv helib ntl gmp pthread)
-#
-# add_executable(keygen GenKey.cpp)
-# target_link_libraries(keygen docopt cryptconv helib ntl gmp pthread)

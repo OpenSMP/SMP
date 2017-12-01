@@ -4,15 +4,15 @@ include_directories(${GTEST_INCLUDE_DIRS})
 
 set(RUNTIME_LIBS   
     cryptgmm 
+    helib
     ntl
-    helib-b
     pthread
     boost_system
     gmp)
 
 set(CPP_ITESTS
-    double_packing 
     test_net_io
+    fast_decryption
     )
 
 #The integration tests must be single source code, and are compiled as a standalone application
