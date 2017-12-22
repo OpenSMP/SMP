@@ -13,6 +13,7 @@ set(RUNTIME_LIBS
 set(CPP_ITESTS
     test_net_io
     fast_decryption
+	test_mult_in_slots
     )
 
 #The integration tests must be single source code, and are compiled as a standalone application

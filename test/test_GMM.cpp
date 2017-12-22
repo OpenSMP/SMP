@@ -7,14 +7,15 @@
 #include "CryptGMM/DoublePacking.hpp"
 #include "CryptGMM/Matrix.hpp"
 #include "CryptGMM/Timer.hpp"
-#include "CryptGMM/HElib.hpp"
-
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <iostream>
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
+static void print_time(std::string const& doc, Duration_t const& dur) {
+    std::cout << doc << " " << time_as_millsecond(dur) << std::endl;
+}
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -29,8 +30,13 @@ void zero(Matrix &mat) {
 void randomize(Matrix &mat) {
     for (long i = 0; i < mat.NumRows(); i++)
         for (long j = 0; j < mat.NumCols(); j++)
-            mat[i][j] = j;
-                //NTL::RandomBnd(10L);//i * 10 + j;
+            mat[i][j] = NTL::RandomBnd(2L);
+}
+
+void mod_to_plain(Matrix &mat, long prime) {
+    for (long i = 0; i < mat.NumRows(); i++)
+        for (long j = 0; j < mat.NumCols(); j++)
+            mat[i][j] %= prime;
 }
 
 struct Duplication {
@@ -38,15 +44,6 @@ struct Duplication {
     long dup;
     long slots_left;
 };
-
-template <class T>
-void rotate_vector(T &vec, long k) {
-    long n = vec.size();
-    T tmp(vec);
-    for (long i = 0; i < n; i++)
-        tmp[((i+k)%n + n)%n] = vec[i];
-    vec = tmp;
-}
 
 Duplication compute_duplications(const long total_rows, 
                                  const long x_blk_id, 
@@ -102,9 +99,7 @@ void fill_compute(Matrix& mat,
         long col = col_start + ll + k;
         if (col >= col_end)
             col = col_start + col % l;
-		col %= mat.NumCols();
-		row %= mat.NumRows();
-		mat.put(row, col, computed);
+        mat.put(row, col, computed);
     }
 }
 
@@ -117,7 +112,6 @@ FHEcontext receive_context(std::istream &s) {
     std::vector<long> gens, ords;
     readContextBase(s, m, p, r, gens, ords);
     FHEcontext context(m, p, r, gens, ords);
-    NTL::zz_p::init(p);
     s >> context;
     return context;
 }
@@ -147,39 +141,36 @@ void play_client(tcp::iostream &conn,
     randomize(A);
     randomize(B);
     ground_truth = mul(A, B);
+    mod_to_plain(ground_truth, context.alMod.getPPowR());
     /// print grouth truth for debugging
+    // save_matrix(std::cout, ground_truth);
     const long MAX_X1 = round_div(A.NumRows(), l);
     const long MAX_Y1 = round_div(A.NumCols(), d);
     const long MAX_X2 = round_div(B.NumCols(), l);
 
     std::vector<std::vector<Ctxt>> uploading; 
     uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, sk));
-	double enc_time;
-	do {
-		AutoTimer timer(&enc_time);
-    	/// encrypt matrix 
-		NTL::ZZX packed_poly;
-		for (int x = 0; x < MAX_X1; x++) {
-			for (int k = 0; k < MAX_Y1; k++) {
-				internal::BlockId blk = {x, k};
-				auto block = internal::partition(A, blk, *ea, false);
-				rawEncode(packed_poly, block.polys, context);
-				sk.Encrypt(uploading[x][k], packed_poly);
-			}
-		}
-	} while(0);
-	std::cout << "encryption: " << enc_time << " ms" << std::endl;
+    auto start_time = Clock::now();
+    /// encrypt matrix 
+    for (int x = 0; x < MAX_X1; x++) {
+        for (int k = 0; k < MAX_Y1; k++) {
+            internal::BlockId blk = {x, k};
+            auto packed_rows = internal::partition(A, blk, *ea, false);
+            //ea->skEncrypt(uploading[x][k], sk, packed_rows.polys);
+        }
+    }
+    auto end_time = Clock::now();
+    print_time("encryption", end_time - start_time);
 
-	double sent_ctx_time;
-	do {
-		AutoTimer timer(&sent_ctx_time);
-		/// send ciphertexts of matrix 
-		for (auto const& row : uploading) {
-			for (auto const& ctx : row)
-				conn << ctx;
-		}
-	} while (0);
-	std::cout << "Sent " << MAX_X1 * MAX_Y1 << " ctxts in " << sent_ctx_time << " ms" << std::endl;
+    /// send ciphertexts of matrix 
+    start_time = Clock::now();
+    for (auto const& row : uploading) {
+        for (auto const& ctx : row)
+            conn << ctx;
+    }
+    std::cout << MAX_X1 * MAX_Y1 << " ciphertexts sent" << std::endl;
+    end_time = Clock::now();
+    print_time("client->server", end_time - start_time);
 
     /// waiting results
     long rows_of_A = A.NumRows();
@@ -196,7 +187,6 @@ void play_client(tcp::iostream &conn,
             }
         }
     }
-    std::cout << "Received " << ret_ctxs.size() << " ctxts" << std::endl;
     /// decrypt
     Matrix computed;
     computed.SetDims(A.NumRows(), B.NumCols());
@@ -205,27 +195,32 @@ void play_client(tcp::iostream &conn,
     int y = 0;
     auto itr = ret_ctxs.begin();
     std::vector<NTL::zz_pX> slots;
-    NTL::ZZX decrypted;
-	double decrypt_time;
-	do {
-		AutoTimer timer(&decrypt_time);
-		for (int x = 0; x < MAX_X1; x++) {
-			for (int y = 0; y < MAX_X2; y++) {
-				size_t num_rots  = compute_rotations(x, rows_of_A, 
-													 y, rows_of_Bt, l).size();
-				for (size_t k = 0; k < num_rots; k++) {
-					sk.Decrypt(decrypted, *itr++);
-					rawDecode(slots, decrypted, context);
-					fill_compute(computed, x, y, k, slots, ea);
-				}
-			}
-		}
-	} while (0);
-	std::cout << "decryption: " << decrypt_time << std::endl;
-	if (!::is_same(ground_truth, computed, NTL::zz_p::modulus())) 
-	  	std::cerr << "The computation seems wrong " << std::endl;
-	else 
-	 	std::cout << "passed" << std::endl;
+    start_time = Clock::now();
+    for (int x = 0; x < MAX_X1; x++) {
+        for (int y = 0; y < MAX_X2; y++) {
+            size_t num_rots  = compute_rotations(x, rows_of_A, 
+                                                 y, rows_of_Bt, l).size();
+            for (size_t k = 0; k < num_rots; k++) {
+                //ea->decrypt(*itr++, sk, slots); 
+                fill_compute(computed, x, y, k, slots, ea);
+            }
+        }
+    }
+    end_time = Clock::now();
+    print_time("decryption", end_time - start_time);
+    if (!::is_same(ground_truth, computed)) 
+        std::cerr << "The computation seems wrong " << std::endl;
+    else 
+        std::cout << "passed" << std::endl;
+}
+
+void my_encode(EncryptedArray const& ea, 
+               zzX &ret,
+               std::vector<NTL::zz_pX> &slots) {
+    auto const& encoder = ea.getContext().alMod.getDerived(PA_zz_p());
+    NTL::zz_pX tmp;
+    encoder.CRT_reconstruct(tmp, slots);
+    // NTL::conv(ret, tmp);
 }
 
 void play_server(tcp::iostream &conn, 
@@ -245,20 +240,25 @@ void play_server(tcp::iostream &conn,
     B.SetDims(n2, n3);
     randomize(A);
     randomize(B);
+
     const long MAX_X1 = round_div(A.NumRows(), l);
     const long MAX_Y1 = round_div(A.NumCols(), d);
     Matrix Bt;
     transpose(&Bt, B);
     const long MAX_X2 = round_div(Bt.NumRows(), l);
     const long MAX_Y2 = round_div(Bt.NumCols(), d);
-    NTL::Mat<internal::PackedRows> precomputed; // 2D-array of polynomials
-    precomputed.SetDims(MAX_X2, MAX_Y1);
+    auto start_time = Clock::now();
+    std::vector<std::vector<NewPlaintextArray>> precomputed;
+    precomputed.resize(MAX_X2, std::vector<NewPlaintextArray>(MAX_Y1, *ea));
     for (int y = 0; y < MAX_X2; y++) {
         for (int k = 0; k < MAX_Y1; k++) {
             internal::BlockId blk = {y, k};
-            precomputed[y][k] = internal::partition(Bt, blk, *ea, true);
+            auto packed_rows = internal::partition(Bt, blk, *ea, true);
+            encode(*ea, precomputed[y][k], packed_rows.polys);
         }
     }
+    auto end_time = Clock::now();
+    print_time("precomputation", end_time - start_time);
 
     /// receving ciphertexts from the client 
     std::vector<std::vector<Ctxt>> received; 
@@ -267,73 +267,65 @@ void play_server(tcp::iostream &conn,
         for (int k = 0; k < MAX_Y1; k++)
             conn >> received[x][k];
     }
-    std::cout << "recevied ciphertexts from client" << std::endl;
+
     /// compute the matrix mulitplication
     long rows_of_A = A.NumRows();
     long rows_of_Bt = Bt.NumRows();
     size_t send_ctx = 0;
-    NTL::ZZX packed_polys;
-    double computation{0.}, network{0.};
-	for (int x = 0; x < MAX_X1; x++) {
-		for (int y = 0; y < MAX_X2; y++) {
-			std::vector<long> rotations = compute_rotations(x, rows_of_A, 
-															y, rows_of_Bt, l);
-			size_t num_rotations = rotations.size();
-			std::vector<Ctxt> summations(num_rotations, ek);
-			double eval_time;
-			do {
-				AutoTimer timer(&eval_time);
-				for (int k = 0; k < MAX_Y1; k++) {
-					for (size_t rot = 0; rot < num_rotations; rot++) {
-						auto rotated(precomputed[y][k].polys);
-						rotate_vector(rotated, -rotations[rot]);
-						/// pack the polys into one poly
-						rawEncode(packed_polys, rotated, context);
-						Ctxt client_ctx(received[x][k]);
-						/// ctx * plain
-						client_ctx.multByConstant(packed_polys);
-						summations[rot] += client_ctx;
-					}
-				}
-				for (auto &sm : summations) 
-					sm.modDownToLevel(1);
-			} while (0);
-			computation += eval_time;
+    zzX packed_polys;
+    Duration_t computation(0), network(0);
+    for (int x = 0; x < MAX_X1; x++) {
+        for (int y = 0; y < MAX_X2; y++) {
+            start_time = Clock::now();
+            std::vector<long> rotations = compute_rotations(x, rows_of_A, 
+                                                            y, rows_of_Bt, l);
+            size_t num_rotations = rotations.size();
+            std::vector<Ctxt> summations(num_rotations, ek);
+            for (int k = 0; k < MAX_Y1; k++) {
+                for (size_t rot = 0; rot < num_rotations; rot++) {
+                    auto rotated(precomputed[y][k]);
+                    rotate(*ea, rotated, -rotations[rot]);
+                    /// pack the polys into one poly
+                    //my_encode(*ea, packed_polys, rotated.getData());
+                    Ctxt client_ctx(received[x][k]);
+                    /// ctx * plain
+                    client_ctx.multByConstant(packed_polys);
+                    summations[rot] += client_ctx;
+                }
+            }
+            for (auto &sm : summations) 
+                sm.modDownToLevel(1);
+            end_time = Clock::now();
+            computation += (end_time - start_time);
 
-			// start_time = Clock::now();
-			double send_ctx_time;
-			do {
-				AutoTimer timer(&send_ctx_time);
-				for (auto const&sm : summations) 
-					conn << sm;
-			} while (0);
-			network += send_ctx_time;
-			send_ctx += summations.size();
-		}
-	} 
-    std::cout << "computation:" << computation << " ms" << std::endl;
-    std::cout << "server->client:" << network << " ms" << std::endl;
+            start_time = Clock::now();
+            for (auto const&sm : summations) 
+                conn << sm;
+            end_time = Clock::now();
+            network += (end_time - start_time);
+            send_ctx += summations.size();
+        }
+    }
+    print_time("computation", computation);
+    print_time("server->client", network);
     std::cout << "Sent " << send_ctx << " ciphertexts" << std::endl;
 }
 
 int run_client(long n1, long n2, long n3) {
-    tcp::iostream conn;
-	conn.connect("127.0.0.1", "12345");
+    tcp::iostream conn("127.0.0.1", "12345");
     if (!conn) {
         std::cerr << "Can not connect to server!" << std::endl;
         return -1;
-    } 
+    }
     const long m = 8192;
-    //const long p = 401;
-    const long p = 769;
+    //const long p = 641;
+    const long p = 3329;
     const long r = 1;
-    const long L = 4;
-    NTL::zz_p::init(p);
+    const long L = 3;
     FHEcontext context(m, p, r);
+    context.bitsPerLevel = 14 + std::ceil(std::log(m)/2 + r* std::log(p));
     buildModChain(context, L);
     std::cout << "kappa = " << context.securityLevel() << std::endl;
-    std::cout << "slot = " << context.ea->size() << std::endl;
-    std::cout << "degree = " << context.ea->getDegree() << std::endl;
     FHESecKey sk(context);
     sk.GenSecKey(64);
     /// send FHEcontext obj
@@ -363,21 +355,18 @@ int run_server(long n1, long n2, long n3) {
 
 int main(int argc, char *argv[]) {
     ArgMapping argmap;
-    long role = -1;
+    long role;
     long n1 = 8; 
     long n2 = 8; 
     long n3 = 8;
     argmap.arg("N", n1, "n1");
     argmap.arg("M", n2, "n2");
     argmap.arg("D", n3, "n3");
-    argmap.arg("R", role, "role. 0 for server and 1 for client");
+    argmap.arg("R", role, "role");
     argmap.parse(argc, argv);
     if (role == 0) {
         return run_server(n1, n2, n3);
     } else if (role == 1) {
         return run_client(n1, n2, n3);
-    } else {
-		argmap.usage("General Matrix Multiplication for |N*M| * |M*D|");
-		return -1;
-	}
+    }
 }
