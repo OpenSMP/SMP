@@ -155,7 +155,8 @@ void play_client(tcp::iostream &conn,
                  FHEcontext &context,
                  const long n1,
                  const long n2,
-                 const long n3) {
+                 const long n3,
+                 bool verbose) {
     FHEPubKey ek(sk);
     ek.makeSymmetric();
     conn << ek;
@@ -202,7 +203,8 @@ void play_client(tcp::iostream &conn,
 				conn << ctx;
 		}
 	} while (0);
-	std::cout << "Sent " << MAX_X1 * MAX_Y1 << " ctxts in " << sent_ctx_time << " ms" << std::endl;
+    if (verbose)
+        std::cout << "Sent " << MAX_X1 * MAX_Y1 << " ctxts in " << sent_ctx_time << " ms" << std::endl;
 
     /// waiting results
     long rows_of_A = A.NumRows();
@@ -219,7 +221,8 @@ void play_client(tcp::iostream &conn,
             }
         }
     }
-    std::cout << "Received " << ret_ctxs.size() << " ctxts" << std::endl;
+    if (verbose)
+        std::cout << "Received " << ret_ctxs.size() << " ctxts" << std::endl;
     /// decrypt
     Matrix computed;
     computed.SetDims(A.NumRows(), B.NumCols());
@@ -245,7 +248,6 @@ void play_client(tcp::iostream &conn,
 		}
 	} while (0);
     clt_ben.dec_times.push_back(decrypt_time);
-	//std::cout << "decryption: " << decrypt_time << std::endl;
 	if (!::is_same(ground_truth, computed, NTL::zz_p::modulus()))
 	  	std::cerr << "The computation seems wrong " << std::endl;
 }
@@ -294,7 +296,8 @@ void play_server(tcp::iostream &conn,
         for (int k = 0; k < MAX_Y1; k++)
             conn >> received[x][k];
     }
-    std::cout << "recevied ciphertexts from client" << std::endl;
+    if (verbose)
+        std::cout << "recevied ciphertexts from client" << std::endl;
     /// compute the matrix mulitplication
     long rows_of_A = A.NumRows();
     long rows_of_Bt = Bt.NumRows();
@@ -339,12 +342,9 @@ void play_server(tcp::iostream &conn,
 		}
 	}
     srv_ben.eval_times.push_back(computation);
-    //std::cout << "computation:" << computation << " ms" << std::endl;
-    //std::cout << "server->client:" << network << " ms" << std::endl;
-    //std::cout << "Sent " << send_ctx << " ciphertexts" << std::endl;
 }
 
-int run_client(long n1, long n2, long n3) {
+int run_client(long n1, long n2, long n3, bool verbose) {
     tcp::iostream conn("192.168.0.116", "12345");
     if (!conn) {
         std::cerr << "Can not connect to server!" << std::endl;
@@ -359,9 +359,11 @@ int run_client(long n1, long n2, long n3) {
     FHEcontext context(m, p, r);
     context.bitsPerLevel = 30 + std::ceil(std::log(m)/2 + r * std::log(p));
     buildModChain(context, L);
-    std::cout << "kappa = " << context.securityLevel() << std::endl;
-    std::cout << "slot = " << context.ea->size() << std::endl;
-    std::cout << "degree = " << context.ea->getDegree() << std::endl;
+    if (verbose) {
+        std::cout << "kappa = " << context.securityLevel() << std::endl;
+        std::cout << "slot = " << context.ea->size() << std::endl;
+        std::cout << "degree = " << context.ea->getDegree() << std::endl;
+    }
     FHESecKey sk(context);
     sk.GenSecKey(64);
     /// send FHEcontext obj
@@ -370,7 +372,7 @@ int run_client(long n1, long n2, long n3) {
     do {
         AutoTimer time(&all_time);
         /// send the evaluation key
-        play_client(conn, sk, context, n1, n2, n3);
+        play_client(conn, sk, context, n1, n2, n3, verbose);
     } while(0);
     clt_ben.total_times.push_back(all_time);
     conn.close();
@@ -387,7 +389,6 @@ int run_server(long n1, long n2, long n3) {
         boost::system::error_code err;
         acceptor.accept(*conn.rdbuf(), err);
         if (!err) {
-            std::cout << "Connected!" << std::endl;
             play_server(conn, n1, n2, n3);
         }
     }
@@ -411,7 +412,7 @@ int main(int argc, char *argv[]) {
         printf("%.3f \\pm %.3f\n", eval_time.first, eval_time.second);
     } else if (role == 1) {
         for (long run = 0; run < 50; run++)
-            run_client(n1, n2, n3);
+            run_client(n1, n2, n3, run == 0);
         printf("Client enc dec total\n");
         auto time = mean_std(clt_ben.enc_times);
         printf("%.3f \\pm %.3f ", time.first, time.second);
