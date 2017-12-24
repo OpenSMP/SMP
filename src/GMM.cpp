@@ -16,6 +16,22 @@
 #include <list>
 using boost::asio::ip::tcp;
 
+std::pair<double, double> mean_std(std::vector<double> const& times) {
+    if (times.empty())
+        return {0., 0.};
+    if (times.size() == 1)
+        return {times[0], 0.};
+    double mean = 0.;
+    for (double t : times)
+        mean += t;
+    mean /= times.size();
+    double stdr = 0.;
+    for (double t : times)
+        stdr += (t - mean) * (t - mean);
+    stdr = std::sqrt(stdr / (times.size() - 1));
+    return {mean, stdr};
+}
+
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
 }
@@ -30,7 +46,7 @@ void randomize(Matrix &mat) {
     for (long i = 0; i < mat.NumRows(); i++)
         for (long j = 0; j < mat.NumCols(); j++)
             mat[i][j] = j;
-                //NTL::RandomBnd(10L);//i * 10 + j;
+    //NTL::RandomBnd(10L);//i * 10 + j;
 }
 
 struct Duplication {
@@ -48,8 +64,8 @@ void rotate_vector(T &vec, long k) {
     vec = tmp;
 }
 
-Duplication compute_duplications(const long total_rows, 
-                                 const long x_blk_id, 
+Duplication compute_duplications(const long total_rows,
+                                 const long x_blk_id,
                                  const long num_slots) {
     long N = std::min((x_blk_id  + 1) * num_slots, total_rows) - x_blk_id * num_slots;
     Duplication d;
@@ -84,7 +100,7 @@ std::vector<long> compute_rotations(long x_blk, long total_rows_X,
     return rotations;
 }
 
-void fill_compute(Matrix& mat, 
+void fill_compute(Matrix& mat,
                   int x, int y, int k,
                   const std::vector<NTL::zz_pX> &slots,
                   const EncryptedArray *ea) {
@@ -127,8 +143,15 @@ void send_context(std::ostream &s, FHEcontext const& context) {
     s << context;
 }
 
-void play_client(tcp::iostream &conn, 
-                 FHESecKey &sk, 
+struct ClientBenchmark {
+    std::vector<double> enc_times;
+    std::vector<double> dec_times;
+    std::vector<double> total_times;
+};
+ClientBenchmark clt_ben;
+
+void play_client(tcp::iostream &conn,
+                 FHESecKey &sk,
                  FHEcontext &context,
                  const long n1,
                  const long n2,
@@ -152,12 +175,12 @@ void play_client(tcp::iostream &conn,
     const long MAX_Y1 = round_div(A.NumCols(), d);
     const long MAX_X2 = round_div(B.NumCols(), l);
 
-    std::vector<std::vector<Ctxt>> uploading; 
+    std::vector<std::vector<Ctxt>> uploading;
     uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, sk));
 	double enc_time;
 	do {
 		AutoTimer timer(&enc_time);
-    	/// encrypt matrix 
+    	/// encrypt matrix
 		NTL::ZZX packed_poly;
 		for (int x = 0; x < MAX_X1; x++) {
 			for (int k = 0; k < MAX_Y1; k++) {
@@ -168,12 +191,12 @@ void play_client(tcp::iostream &conn,
 			}
 		}
 	} while(0);
-	std::cout << "encryption: " << enc_time << " ms" << std::endl;
+    clt_ben.enc_times.push_back(enc_time);
 
 	double sent_ctx_time;
 	do {
 		AutoTimer timer(&sent_ctx_time);
-		/// send ciphertexts of matrix 
+		/// send ciphertexts of matrix
 		for (auto const& row : uploading) {
 			for (auto const& ctx : row)
 				conn << ctx;
@@ -187,7 +210,7 @@ void play_client(tcp::iostream &conn,
     std::list<Ctxt> ret_ctxs;
     for (int x = 0; x < MAX_X1; x++) {
         for (int y = 0; y < MAX_X2; y++) {
-            size_t num_rots = compute_rotations(x, rows_of_A, 
+            size_t num_rots = compute_rotations(x, rows_of_A,
                                                 y, rows_of_Bt, l).size();
             for (size_t k = 0; k < num_rots; k++) {
                 Ctxt result(sk);
@@ -211,7 +234,7 @@ void play_client(tcp::iostream &conn,
 		AutoTimer timer(&decrypt_time);
 		for (int x = 0; x < MAX_X1; x++) {
 			for (int y = 0; y < MAX_X2; y++) {
-				size_t num_rots  = compute_rotations(x, rows_of_A, 
+				size_t num_rots  = compute_rotations(x, rows_of_A,
 													 y, rows_of_Bt, l).size();
 				for (size_t k = 0; k < num_rots; k++) {
 					sk.Decrypt(decrypted, *itr++);
@@ -221,14 +244,18 @@ void play_client(tcp::iostream &conn,
 			}
 		}
 	} while (0);
-	std::cout << "decryption: " << decrypt_time << std::endl;
-	if (!::is_same(ground_truth, computed, NTL::zz_p::modulus())) 
+    clt_ben.dec_times.push_back(decrypt_time);
+	//std::cout << "decryption: " << decrypt_time << std::endl;
+	if (!::is_same(ground_truth, computed, NTL::zz_p::modulus()))
 	  	std::cerr << "The computation seems wrong " << std::endl;
-	else 
-	 	std::cout << "passed" << std::endl;
 }
 
-void play_server(tcp::iostream &conn, 
+struct ServerBenchmark {
+    std::vector<double> eval_times;
+};
+ServerBenchmark srv_ben;
+
+void play_server(tcp::iostream &conn,
                  const long n1,
                  const long n2,
                  const long n3) {
@@ -260,8 +287,8 @@ void play_server(tcp::iostream &conn,
         }
     }
 
-    /// receving ciphertexts from the client 
-    std::vector<std::vector<Ctxt>> received; 
+    /// receving ciphertexts from the client
+    std::vector<std::vector<Ctxt>> received;
     received.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, ek));
     for (int x = 0; x < MAX_X1; x++) {
         for (int k = 0; k < MAX_Y1; k++)
@@ -276,7 +303,7 @@ void play_server(tcp::iostream &conn,
     double computation{0.}, network{0.};
 	for (int x = 0; x < MAX_X1; x++) {
 		for (int y = 0; y < MAX_X2; y++) {
-			std::vector<long> rotations = compute_rotations(x, rows_of_A, 
+			std::vector<long> rotations = compute_rotations(x, rows_of_A,
 															y, rows_of_Bt, l);
 			size_t num_rotations = rotations.size();
 			std::vector<Ctxt> summations(num_rotations, ek);
@@ -295,7 +322,7 @@ void play_server(tcp::iostream &conn,
 						summations[rot] += client_ctx;
 					}
 				}
-				for (auto &sm : summations) 
+				for (auto &sm : summations)
 					sm.modDownToLevel(1);
 			} while (0);
 			computation += eval_time;
@@ -304,32 +331,33 @@ void play_server(tcp::iostream &conn,
 			double send_ctx_time;
 			do {
 				AutoTimer timer(&send_ctx_time);
-				for (auto const&sm : summations) 
+				for (auto const&sm : summations)
 					conn << sm;
 			} while (0);
 			network += send_ctx_time;
 			send_ctx += summations.size();
 		}
-	} 
-    std::cout << "computation:" << computation << " ms" << std::endl;
-    std::cout << "server->client:" << network << " ms" << std::endl;
-    std::cout << "Sent " << send_ctx << " ciphertexts" << std::endl;
+	}
+    srv_ben.eval_times.push_back(computation);
+    //std::cout << "computation:" << computation << " ms" << std::endl;
+    //std::cout << "server->client:" << network << " ms" << std::endl;
+    //std::cout << "Sent " << send_ctx << " ciphertexts" << std::endl;
 }
 
 int run_client(long n1, long n2, long n3) {
-    tcp::iostream conn;
-	conn.connect("127.0.0.1", "12345");
+    tcp::iostream conn("192.168.0.116", "12345");
     if (!conn) {
         std::cerr << "Can not connect to server!" << std::endl;
         return -1;
-    } 
+    }
     const long m = 8192;
     //const long p = 401;
     const long p = 769;
-    const long r = 1;
-    const long L = 4;
+    const long r = 2;
+    const long L = 2;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
+    context.bitsPerLevel = 30 + std::ceil(std::log(m)/2 + r * std::log(p));
     buildModChain(context, L);
     std::cout << "kappa = " << context.securityLevel() << std::endl;
     std::cout << "slot = " << context.ea->size() << std::endl;
@@ -338,8 +366,13 @@ int run_client(long n1, long n2, long n3) {
     sk.GenSecKey(64);
     /// send FHEcontext obj
     send_context(conn, context);
-    /// send the evaluation key
-    play_client(conn, sk, context, n1, n2, n3);
+    double all_time;
+    do {
+        AutoTimer time(&all_time);
+        /// send the evaluation key
+        play_client(conn, sk, context, n1, n2, n3);
+    } while(0);
+    clt_ben.total_times.push_back(all_time);
     conn.close();
     return 1;
 }
@@ -349,23 +382,22 @@ int run_server(long n1, long n2, long n3) {
     tcp::endpoint endpoint(tcp::v4(), 12345);
     tcp::acceptor acceptor(ios, endpoint);
 
-    for (;;) {
+    for (long run = 0; run < 50; run++) {
         tcp::iostream conn;
         boost::system::error_code err;
         acceptor.accept(*conn.rdbuf(), err);
         if (!err) {
             std::cout << "Connected!" << std::endl;
             play_server(conn, n1, n2, n3);
-            break;
         }
-    }  
+    }
 }
 
 int main(int argc, char *argv[]) {
     ArgMapping argmap;
     long role = -1;
-    long n1 = 8; 
-    long n2 = 8; 
+    long n1 = 8;
+    long n2 = 8;
     long n3 = 8;
     argmap.arg("N", n1, "n1");
     argmap.arg("M", n2, "n2");
@@ -373,9 +405,20 @@ int main(int argc, char *argv[]) {
     argmap.arg("R", role, "role. 0 for server and 1 for client");
     argmap.parse(argc, argv);
     if (role == 0) {
-        return run_server(n1, n2, n3);
+        run_server(n1, n2, n3);
+        auto eval_time = mean_std(srv_ben.eval_times);
+        printf("Server evaluation time\n");
+        printf("%.3f \\pm %.3f\n", eval_time.first, eval_time.second);
     } else if (role == 1) {
-        return run_client(n1, n2, n3);
+        for (long run = 0; run < 50; run++)
+            run_client(n1, n2, n3);
+        printf("Client enc dec total\n");
+        auto time = mean_std(clt_ben.enc_times);
+        printf("%.3f \\pm %.3f ", time.first, time.second);
+        time = mean_std(clt_ben.dec_times);
+        printf("%.3f \\pm %.3f ", time.first, time.second);
+        time = mean_std(clt_ben.total_times);
+        printf("%.3f \\pm %.3f\n", time.first, time.second);
     } else {
 		argmap.usage("General Matrix Multiplication for |N*M| * |M*D|");
 		return -1;
