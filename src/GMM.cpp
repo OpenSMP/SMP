@@ -296,8 +296,6 @@ void play_server(tcp::iostream &conn,
         for (int k = 0; k < MAX_Y1; k++)
             conn >> received[x][k];
     }
-    //if (verbose)
-    //    std::cout << "recevied ciphertexts from client" << std::endl;
     /// compute the matrix mulitplication
     long rows_of_A = A.NumRows();
     long rows_of_Bt = Bt.NumRows();
@@ -354,10 +352,10 @@ int run_client(long n1, long n2, long n3, bool verbose) {
     //const long p = 401;
     const long p = 769;
     const long r = 2;
-    const long L = 2;
+    const long L = 4;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
-    context.bitsPerLevel = 30 + std::ceil(std::log(m)/2 + r * std::log(p));
+    context.bitsPerLevel = 15;// + std::ceil(std::log(m)/2 + r * std::log(p));
     buildModChain(context, L);
     if (verbose) {
         std::cout << "kappa = " << context.securityLevel() << std::endl;
@@ -384,7 +382,7 @@ int run_server(long n1, long n2, long n3) {
     tcp::endpoint endpoint(tcp::v4(), 12345);
     tcp::acceptor acceptor(ios, endpoint);
 
-    for (long run = 0; run < 50; run++) {
+    for (long run = 0; run < 20; run++) {
         tcp::iostream conn;
         boost::system::error_code err;
         acceptor.accept(*conn.rdbuf(), err);
@@ -412,7 +410,7 @@ int main(int argc, char *argv[]) {
         printf("Server evaluation time\n");
         printf("%.3f \\pm %.3f\n", eval_time.first, eval_time.second);
     } else if (role == 1) {
-        for (long run = 0; run < 50; run++)
+        for (long run = 0; run < 20; run++)
             run_client(n1, n2, n3, run == 0);
         printf("Client enc dec total\n");
         auto time = mean_std(clt_ben.enc_times);
