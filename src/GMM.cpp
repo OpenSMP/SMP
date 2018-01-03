@@ -144,8 +144,10 @@ void send_context(std::ostream &s, FHEcontext const& context) {
 }
 
 struct ClientBenchmark {
+    std::vector<double> pack_times;
     std::vector<double> enc_times;
     std::vector<double> dec_times;
+    std::vector<double> unpack_times;
     std::vector<double> total_times;
 };
 ClientBenchmark clt_ben;
@@ -178,33 +180,39 @@ void play_client(tcp::iostream &conn,
 
     std::vector<std::vector<Ctxt>> uploading;
     uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, sk));
-	double enc_time;
+	double enc_time = 0.;
+    double pack_time = 0.;
 	do {
-		AutoTimer timer(&enc_time);
     	/// encrypt matrix
 		NTL::ZZX packed_poly;
 		for (int x = 0; x < MAX_X1; x++) {
 			for (int k = 0; k < MAX_Y1; k++) {
 				internal::BlockId blk = {x, k};
+                double one_pack_time, one_enc_time;
 				auto block = internal::partition(A, blk, *ea, false);
-				rawEncode(packed_poly, block.polys, context);
-				sk.Encrypt(uploading[x][k], packed_poly);
+                {
+                    AutoTimer timer(&one_pack_time);
+                    rawEncode(packed_poly, block.polys, context);
+                }
+                {
+                    AutoTimer timer(&one_enc_time);
+                    sk.Encrypt(uploading[x][k], packed_poly);
+                }
+                enc_time += one_enc_time;
+                pack_time += one_pack_time;
 			}
 		}
 	} while(0);
+    clt_ben.pack_times.push_back(pack_time);
     clt_ben.enc_times.push_back(enc_time);
 
-	double sent_ctx_time;
-	do {
-		AutoTimer timer(&sent_ctx_time);
-		/// send ciphertexts of matrix
-		for (auto const& row : uploading) {
-			for (auto const& ctx : row)
-				conn << ctx;
-		}
-	} while (0);
+    /// send ciphertexts of matrix
+    for (auto const& row : uploading) {
+        for (auto const& ctx : row)
+            conn << ctx;
+    }
     if (verbose)
-        std::cout << "Sent " << MAX_X1 * MAX_Y1 << " ctxts in " << sent_ctx_time << " ms" << std::endl;
+        std::cout << "Sent " << MAX_X1 * MAX_Y1 << " ctxts" << std::endl;
 
     /// waiting results
     long rows_of_A = A.NumRows();
@@ -232,22 +240,31 @@ void play_client(tcp::iostream &conn,
     auto itr = ret_ctxs.begin();
     std::vector<NTL::zz_pX> slots;
     NTL::ZZX decrypted;
-	double decrypt_time;
-	do {
-		AutoTimer timer(&decrypt_time);
-		for (int x = 0; x < MAX_X1; x++) {
-			for (int y = 0; y < MAX_X2; y++) {
-				size_t num_rots  = compute_rotations(x, rows_of_A,
-													 y, rows_of_Bt, l).size();
-				for (size_t k = 0; k < num_rots; k++) {
-					sk.Decrypt(decrypted, *itr++);
-					rawDecode(slots, decrypted, context);
-					fill_compute(computed, x, y, k, slots, ea);
-				}
-			}
-		}
-	} while (0);
+	double decrypt_time = 0.;
+    double unpack_time = 0.;
+    for (int x = 0; x < MAX_X1; x++) {
+        for (int y = 0; y < MAX_X2; y++) {
+            size_t num_rots  = compute_rotations(x, rows_of_A,
+                                                 y, rows_of_Bt, l).size();
+            for (size_t k = 0; k < num_rots; k++) {
+                double one_dec_time;
+                {
+                    AutoTimer timer(&one_dec_time);
+                    sk.Decrypt(decrypted, *itr++);
+                }
+                double one_unpack_time;
+                {
+                    AutoTimer timer(&one_unpack_time);
+                    rawDecode(slots, decrypted, context);
+                }
+                fill_compute(computed, x, y, k, slots, ea);
+                decrypt_time += one_dec_time;
+                unpack_time += one_unpack_time;
+            }
+        }
+    }
     clt_ben.dec_times.push_back(decrypt_time);
+    clt_ben.unpack_times.push_back(unpack_time);
 	if (!::is_same(ground_truth, computed, NTL::zz_p::modulus()))
 	  	std::cerr << "The computation seems wrong " << std::endl;
 }
@@ -412,11 +429,19 @@ int main(int argc, char *argv[]) {
     } else if (role == 1) {
         for (long run = 0; run < 20; run++)
             run_client(n1, n2, n3, run == 0);
-        printf("Client enc dec total\n");
-        auto time = mean_std(clt_ben.enc_times);
+        printf("Client pack enc dec unpack total\n");
+        auto time = mean_std(clt_ben.pack_times);
         printf("%.3f \\pm %.3f ", time.first, time.second);
+
+        time = mean_std(clt_ben.enc_times);
+        printf("%.3f \\pm %.3f ", time.first, time.second);
+
         time = mean_std(clt_ben.dec_times);
         printf("%.3f \\pm %.3f ", time.first, time.second);
+
+        time = mean_std(clt_ben.unpack_times);
+        printf("%.3f \\pm %.3f ", time.first, time.second);
+
         time = mean_std(clt_ben.total_times);
         printf("%.3f \\pm %.3f\n", time.first, time.second);
     } else {
