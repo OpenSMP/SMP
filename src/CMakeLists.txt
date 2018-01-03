@@ -16,3 +16,6 @@ set(RUNTIME_LIBS
 
 add_executable(GMM GMM.cpp)
 target_link_libraries(GMM ${RUNTIME_LIBS})
+
+add_executable(MiniONN MiniONN.cpp)
+target_link_libraries(MiniONN ${RUNTIME_LIBS})
