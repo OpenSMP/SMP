@@ -296,8 +296,8 @@ void play_server(tcp::iostream &conn,
         for (int k = 0; k < MAX_Y1; k++)
             conn >> received[x][k];
     }
-    if (verbose)
-        std::cout << "recevied ciphertexts from client" << std::endl;
+    //if (verbose)
+    //    std::cout << "recevied ciphertexts from client" << std::endl;
     /// compute the matrix mulitplication
     long rows_of_A = A.NumRows();
     long rows_of_Bt = Bt.NumRows();
@@ -392,6 +392,7 @@ int run_server(long n1, long n2, long n3) {
             play_server(conn, n1, n2, n3);
         }
     }
+    return 0;
 }
 
 int main(int argc, char *argv[]) {

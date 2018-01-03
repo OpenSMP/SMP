@@ -19,3 +19,6 @@ target_link_libraries(GMM ${RUNTIME_LIBS})
 
 add_executable(MiniONN MiniONN.cpp)
 target_link_libraries(MiniONN ${RUNTIME_LIBS})
+
+add_executable(FindParams FindParams.cpp)
+target_link_libraries(FindParams ${RUNTIME_LIBS})

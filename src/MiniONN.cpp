@@ -12,6 +12,7 @@
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
+constexpr long REPEATS = 10;
 
 std::pair<double, double> mean_std(std::vector<double> const& times) {
     if (times.empty())
@@ -252,7 +253,7 @@ void play_client(tcp::iostream &conn,
 		}
 		{
 			AutoTimer timer(&one_unpack_time);
-			ea->decrypt(ctx, sk, slots);
+            ea->decode(slots, decrypted);
 		}
 		dec_time += one_dec_time;
 		unpack_time += one_unpack_time;
@@ -305,7 +306,7 @@ int run_client(std::string const& addr, long port,
         return -1;
     }
     const long m = 8192;
-    const long p = 8191;
+    const long p = 40961;
     const long r = 1;
     const long L = 3;
     NTL::zz_p::init(p);
@@ -326,7 +327,7 @@ int run_client(std::string const& addr, long port,
         AutoTimer time(&all_time);
         play_client(conn, sk, context, n1, n2, n3, verbose);
     } while(0);
-    //clt_ben.total_times.push_back(all_time);
+    clt_ben.total_times.push_back(all_time);
     conn.close();
     return 1;
 }
@@ -336,7 +337,7 @@ int run_server(long port, long n1, long n2, long n3) {
     tcp::endpoint endpoint(tcp::v4(), port);
     tcp::acceptor acceptor(ios, endpoint);
 
-    for (long run = 0; run < 50; run++) {
+    for (long run = 0; run < REPEATS; run++) {
         tcp::iostream conn;
         boost::system::error_code err;
         acceptor.accept(*conn.rdbuf(), err);
@@ -368,16 +369,24 @@ int main(int argc, char *argv[]) {
         printf("Server evaluation time\n");
         printf("%.3f \\pm %.3f\n", eval_time.first, eval_time.second);
     } else if (role == 1) {
-        for (long run = 0; run < 50; run++) {
+        for (long run = 0; run < REPEATS; run++) {
 			int st = run_client(addr, port, n1, n2, n3, run == 0);
             if (st < 0)
 				break;
 		}
-        printf("Client enc dec total\n");
-        auto times = mean_std(clt_ben.enc_times);
-        printf("%.3f \\pm %.3f ", times.first, times.second);
+        printf("Client pack enc dec unpack total\n");
+		auto times = mean_std(clt_ben.pack_times);
+		printf("%.3f \\pm %.3f ", times.first, times.second);
+
+		times = mean_std(clt_ben.enc_times);
+		printf("%.3f \\pm %.3f ", times.first, times.second);
+
         times = mean_std(clt_ben.dec_times);
         printf("%.3f \\pm %.3f ", times.first, times.second);
+
+		times = mean_std(clt_ben.unpack_times);
+		printf("%.3f \\pm %.3f ", times.first, times.second);
+
         times = mean_std(clt_ben.total_times);
         printf("%.3f \\pm %.3f\n", times.first, times.second);
     } else {
