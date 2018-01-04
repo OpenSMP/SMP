@@ -22,3 +22,6 @@ target_link_libraries(MiniONN ${RUNTIME_LIBS})
 
 add_executable(FindParams FindParams.cpp)
 target_link_libraries(FindParams ${RUNTIME_LIBS})
+
+add_executable(FBPacking FBPacking.cpp)
+target_link_libraries(FBPacking ${RUNTIME_LIBS})
