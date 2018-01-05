@@ -17,7 +17,7 @@
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
-constexpr int REPEAT = 50;
+constexpr int REPEAT = 1;
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -216,11 +216,10 @@ void play_server(tcp::iostream &conn,
     plain_B_blk.SetDims(MAX_X2, MAX_Y2);
     for (int y = 0; y < MAX_X2; y++) {
         for (int k = 0; k < MAX_Y2; k++) {
-            internal::BlockId blk = {0, 0};
+            internal::BlockId blk = {y, k};
             plain_B_blk[y][k] = internal::partition(Bt, blk, *ea, true);
         }
     }
-    std::cout << "partition\n";
 
     /// receving ciphertexts from the client
     std::vector<std::vector<Ctxt>> enc_A_blk;
@@ -229,7 +228,7 @@ void play_server(tcp::iostream &conn,
         for (int k = 0; k < MAX_Y1; k++)
             conn >> enc_A_blk[x][k];
     }
-    std::cout << "received " <<  MAX_X1 * MAX_Y1  << " ctxts" << std::endl;
+
     /// compute the matrix mulitplication
     double computation{0.};
 	std::list<Ctxt> results;
@@ -270,12 +269,12 @@ int run_client(std::string const& addr,
         return -1;
     }
     const long m = 8192;
-    const long p = 769;
+    const long p = 3329;
     const long r = 2;
     const long L = 2;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
-    context.bitsPerLevel = 30 + std::ceil(std::log(m)/2 + r * std::log(p));
+    context.bitsPerLevel = 59;
     buildModChain(context, L);
     if (verbose) {
         std::cerr << "kappa = " << context.securityLevel() << std::endl;
