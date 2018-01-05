@@ -17,7 +17,7 @@
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
-constexpr int REPEAT = 1;
+constexpr int REPEAT = 50;
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -36,11 +36,11 @@ void randomize(Matrix &mat, long p = 3) {
 }
 
 
-void fill_compute(Matrix& mat, 
+void fill_compute(Matrix& mat,
 				  long row_blk,
 				  long col,
                   const std::vector<NTL::zz_pX> &slots,
-                  const EncryptedArray *ea) 
+                  const EncryptedArray *ea)
 {
     const long l = ea->size();
     const long d = ea->getDegree();
@@ -74,9 +74,9 @@ void play_client(tcp::iostream &conn,
                  const long n3,
                  bool verbose) {
     FHEPubKey ek(sk);
-	//* Convert to evalution key. 
+	//* Convert to evalution key.
 	//* This function is not provided by the origin HElib. Checkout our fork.
-    ek.makeSymmetric(); 
+    ek.makeSymmetric();
     conn << ek;
     const EncryptedArray *ea = context.ea;
     const long l = ea->size();
@@ -108,11 +108,11 @@ void play_client(tcp::iostream &conn,
 			{/// packing
 				AutoTimer timer(&one_pack_time);
 				rawEncode(packed_poly, block.polys, context);
-			} 
+			}
 			{/// encryption
 				AutoTimer timer(&one_enc_time);
 				sk.Encrypt(uploading[x][k], packed_poly);
-			} 
+			}
 			pack_time += one_pack_time;
 			enc_time += one_enc_time;
 		}
@@ -205,10 +205,10 @@ void play_server(tcp::iostream &conn,
     const long MAX_Y1 = round_div(A.NumCols(), d);
 
     Matrix Bt;
-	/// We compute A*B, but we use B tranpose. 
-	/// This allow us to write one internal::partition() 
+	/// We compute A*B, but we use B tranpose.
+	/// This allow us to write one internal::partition()
 	/// for row-major case.
-    transpose(&Bt, B); 
+    transpose(&Bt, B);
     const long MAX_X2 = round_div(Bt.NumRows(), l);
     const long MAX_Y2 = round_div(Bt.NumCols(), d);
 	assert(MAX_Y1 == MAX_Y2);
@@ -260,8 +260,10 @@ void play_server(tcp::iostream &conn,
 		conn << ctx;
 }
 
-int run_client(long n1, long n2, long n3, bool verbose) {
-    tcp::iostream conn("127.0.0.1", "12345");
+int run_client(std::string const& addr,
+               long port,
+               long n1, long n2, long n3, bool verbose) {
+    tcp::iostream conn(addr, std::to_string(port));
     if (!conn) {
         std::cerr << "Can not connect to server!" << std::endl;
         return -1;
@@ -294,9 +296,9 @@ int run_client(long n1, long n2, long n3, bool verbose) {
     return 1;
 }
 
-int run_server(long n1, long n2, long n3) {
+int run_server(long port, long n1, long n2, long n3) {
     boost::asio::io_service ios;
-    tcp::endpoint endpoint(tcp::v4(), 12345);
+    tcp::endpoint endpoint(tcp::v4(), port);
     tcp::acceptor acceptor(ios, endpoint);
 
     for (long run = 0; run < REPEAT; run++) {
@@ -316,19 +318,23 @@ int main(int argc, char *argv[]) {
     long n1 = 8;
     long n2 = 8;
     long n3 = 8;
+    std::string addr = "127.0.0.1";
+	long port = 12345;
     argmap.arg("N", n1, "n1");
     argmap.arg("M", n2, "n2");
     argmap.arg("D", n3, "n3");
     argmap.arg("R", role, "role. 0 for server and 1 for client");
+	argmap.arg("a", addr, "server address");
+	argmap.arg("p", port, "port");
     argmap.parse(argc, argv);
     if (role == 0) {
-        run_server(n1, n2, n3);
+        run_server(port, n1, n2, n3);
         auto eval_time = mean_std(srv_ben.eval_times);
         printf("Server evaluation time\n");
         printf("%.3f %.3f\n", eval_time.first, eval_time.second);
     } else if (role == 1) {
         for (long run = 0; run < REPEAT; run++)
-            run_client(n1, n2, n3, run == 0);
+            run_client(addr, port, n1, n2, n3, run == 0);
         printf("Client pack enc dec unpack total\n");
         auto time = mean_std(clt_ben.pack_times);
         printf("%.3f %.3f ", time.first, time.second);

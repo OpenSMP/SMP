@@ -347,6 +347,7 @@ int run_client(long n1, long n2, long n3, bool verbose) {
         std::cout << "kappa = " << context.securityLevel() << std::endl;
         std::cout << "slot = " << context.ea->size() << std::endl;
         std::cout << "degree = " << context.ea->getDegree() << std::endl;
+        std::cout << "bits |ctxt| = " << context.logOfProduct(context.ctxtPrimes) << std::endl;
     }
     FHESecKey sk(context);
     sk.GenSecKey(64);
