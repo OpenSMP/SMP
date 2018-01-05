@@ -8,6 +8,8 @@
 #include "CryptGMM/Matrix.hpp"
 #include "CryptGMM/Timer.hpp"
 #include "CryptGMM/HElib.hpp"
+#include "CryptGMM/network/net_io.hpp"
+#include "CryptGMM/literal.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -15,22 +17,6 @@
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
-
-std::pair<double, double> mean_std(std::vector<double> const& times) {
-    if (times.empty())
-        return {0., 0.};
-    if (times.size() == 1)
-        return {times[0], 0.};
-    double mean = 0.;
-    for (double t : times)
-        mean += t;
-    mean /= times.size();
-    double stdr = 0.;
-    for (double t : times)
-        stdr += (t - mean) * (t - mean);
-    stdr = std::sqrt(stdr / (times.size() - 1));
-    return {mean, stdr};
-}
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -122,25 +108,6 @@ void fill_compute(Matrix& mat,
 		row %= mat.NumRows();
 		mat.put(row, col, computed);
     }
-}
-
-long ceil_round(long a, long l) {
-    return (a + l - 1) / l * l;
-}
-
-FHEcontext receive_context(std::istream &s) {
-    unsigned long m, p, r;
-    std::vector<long> gens, ords;
-    readContextBase(s, m, p, r, gens, ords);
-    FHEcontext context(m, p, r, gens, ords);
-    NTL::zz_p::init(p);
-    s >> context;
-    return context;
-}
-
-void send_context(std::ostream &s, FHEcontext const& context) {
-    writeContextBase(s, context);
-    s << context;
 }
 
 struct ClientBenchmark {
@@ -250,6 +217,8 @@ void play_client(tcp::iostream &conn,
                 double one_dec_time;
                 {
                     AutoTimer timer(&one_dec_time);
+					if (!itr->isCorrect())
+						std::cerr << "decryption might fail. " << itr->log_of_ratio() << std::endl;
                     sk.Decrypt(decrypted, *itr++);
                 }
                 double one_unpack_time;
@@ -360,19 +329,19 @@ void play_server(tcp::iostream &conn,
 }
 
 int run_client(long n1, long n2, long n3, bool verbose) {
-    tcp::iostream conn("192.168.0.116", "12345");
+    tcp::iostream conn("127.0.0.1", "12345");
     if (!conn) {
         std::cerr << "Can not connect to server!" << std::endl;
         return -1;
     }
     const long m = 8192;
     //const long p = 401;
-    const long p = 769;
-    const long r = 2;
-    const long L = 3;
+    const long p = 31489;
+    const long r = 1;
+    const long L = 2;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
-    context.bitsPerLevel = 10 + std::ceil(std::log(m)/2 + r * std::log(p));
+    context.bitsPerLevel = 59;//30 + std::ceil(std::log(m)/2 + r * std::log(p));
     buildModChain(context, L);
     if (verbose) {
         std::cout << "kappa = " << context.securityLevel() << std::endl;

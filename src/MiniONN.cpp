@@ -5,6 +5,8 @@
 
 #include "CryptGMM/Matrix.hpp"
 #include "CryptGMM/Timer.hpp"
+#include "CryptGMM/literal.hpp"
+#include "CryptGMM/network/net_io.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -13,22 +15,6 @@
 #include <list>
 using boost::asio::ip::tcp;
 constexpr long REPEATS = 10;
-
-std::pair<double, double> mean_std(std::vector<double> const& times) {
-    if (times.empty())
-        return {0., 0.};
-    if (times.size() == 1)
-        return {times[0], 0.};
-    double mean = 0.;
-    for (double t : times)
-        mean += t;
-    mean /= times.size();
-    double stdr = 0.;
-    for (double t : times)
-        stdr += (t - mean) * (t - mean);
-    stdr = std::sqrt(stdr / (times.size() - 1));
-    return {mean, stdr};
-}
 
 struct EncVec {
 	long length;
@@ -163,21 +149,6 @@ void mat_mult(std::list<Ctxt> &out,
 			}
 		}
 	}
-}
-
-FHEcontext receive_context(std::istream &s) {
-    unsigned long m, p, r;
-    std::vector<long> gens, ords;
-    readContextBase(s, m, p, r, gens, ords);
-    FHEcontext context(m, p, r, gens, ords);
-    NTL::zz_p::init(p);
-    s >> context;
-    return context;
-}
-
-void send_context(std::ostream &s, FHEcontext const& context) {
-    writeContextBase(s, context);
-    s << context;
 }
 
 struct ClientBenchmark {

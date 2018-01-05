@@ -53,7 +53,7 @@ PackedRows partition(Matrix const& matrix, BlockId const& blk,
                           matrix[row][col]);
         }
     }
-    duplicate(ret, row_end - row_start);
+    //duplicate(ret, row_end - row_start);
     return ret;
 }
 } // namespace internal
