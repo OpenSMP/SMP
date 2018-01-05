@@ -42,13 +42,14 @@ PackedRows partition(Matrix const& matrix, BlockId const& blk,
     ret.num_duplication = 1;
     for (long row = row_start; row < row_end; row++) {
         const long offset = row - row_start;
-        ret.polys[offset].SetLength(d);
+        ret.polys[offset].SetLength(d + 1);
         for (long col = col_start; col < col_end; col++) {
             /// coeff = backward ? d - 1 - (col - col_start) : col - col_start;
             long coeff = col - col_start;
             if (backward)
                 coeff = d - 1 - coeff;
-            NTL::SetCoeff(ret.polys[offset], 
+            assert(coeff >= 0 && coeff <= NTL::deg(ret.polys[offset]));
+            NTL::SetCoeff(ret.polys[offset],
                           coeff, 
                           matrix[row][col]);
         }

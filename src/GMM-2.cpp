@@ -131,7 +131,7 @@ void play_client(tcp::iostream &conn,
     /// waiting results
     long rows_of_A = A.NumRows();
     long rows_of_Bt = B.NumCols(); // Bt::Rows = B::Cols
-	int64_t ctx_cnt;
+	int64_t ctx_cnt = 0;
 	conn >> ctx_cnt;
 	if (verbose)
         std::cerr << "To receive " << ctx_cnt << " ctxts" << std::endl;
@@ -187,6 +187,7 @@ void play_server(tcp::iostream &conn,
                  const long n2,
                  const long n3) {
     auto context = receive_context(conn);
+    NTL::zz_p::init(context.zMStar.getP());
     const EncryptedArray *ea = context.ea;
     const long l = ea->size();
     const long d = ea->getDegree();
