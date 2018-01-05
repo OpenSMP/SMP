@@ -6,6 +6,8 @@
 
 #include "CryptGMM/Matrix.hpp"
 #include "CryptGMM/Timer.hpp"
+#include "CryptGMM/literal.hpp"
+#include "CryptGMM/network/net_io.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -16,7 +18,6 @@ using boost::asio::ip::tcp;
 constexpr long REPEATS = 10;
 static void randomize(Matrix &mat);
 static void randomize(NTL::ZZX &poly, long deg, long p);
-static std::pair<double, double> mean_std(std::vector<double> const& times);
 
 void pack_rows(std::vector<NTL::ZZX> &polys, Matrix const& mat, const long m)
 {
@@ -57,21 +58,6 @@ std::vector<long> get_inner_products(NTL::ZZX const& poly, const long vec_len) {
 	for (long i = 0; i <= NTL::deg(poly); i += vec_len)
 		ips.push_back(NTL::to_long(poly[i]));
 	return ips;
-}
-
-FHEcontext receive_context(std::istream &s) {
-    unsigned long m, p, r;
-    std::vector<long> gens, ords;
-    readContextBase(s, m, p, r, gens, ords);
-    FHEcontext context(m, p, r, gens, ords);
-    NTL::zz_p::init(p);
-    s >> context;
-    return context;
-}
-
-void send_context(std::ostream &s, FHEcontext const& context) {
-    writeContextBase(s, context);
-    s << context;
 }
 
 struct ClientBenchmark {
@@ -152,6 +138,8 @@ void play_client(tcp::iostream &conn,
 		std::transform(results.cbegin(), results.cend(), std::back_inserter(decrypted),
 					   [&sk](Ctxt const& ctx) -> NTL::ZZX {
 					   NTL::ZZX dec;
+					   if (!ctx.isCorrect())
+					       std::cout << "decryption might fail" << std::endl;
 					   sk.Decrypt(dec, ctx);
 					   return dec;
 					   });
@@ -221,12 +209,13 @@ int run_client(std::string const& addr, long port,
         return -1;
     }
     const long m = 8192;
-    const long p = 40961;
-    const long r = 1;
-    const long L = 3;
+    const long p = 769;
+    const long r = 2;
+    const long L = 2;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
-    context.bitsPerLevel = 20; // no sense, just trial and error to find this value.
+    context.bitsPerLevel = 30 + std::ceil(std::log(m)/2 + r * std::log(p));
+
     buildModChain(context, L);
     if (verbose) {
         std::cout << "kappa = " << context.securityLevel() << std::endl;
@@ -385,21 +374,5 @@ void randomize(NTL::ZZX &poly, long m, long p) {
 	assert(phim == (m >> 1));
 	NTL::random(ply, phim);
 	NTL::conv(poly, ply);
-}
-
-std::pair<double, double> mean_std(std::vector<double> const& times) {
-    if (times.empty())
-        return {0., 0.};
-    if (times.size() == 1)
-        return {times[0], 0.};
-    double mean = 0.;
-    for (double t : times)
-        mean += t;
-    mean /= times.size();
-    double stdr = 0.;
-    for (double t : times)
-        stdr += (t - mean) * (t - mean);
-    stdr = std::sqrt(stdr / (times.size() - 1));
-    return {mean, stdr};
 }
 
