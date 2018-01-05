@@ -133,18 +133,17 @@ void play_client(tcp::iostream &conn,
     long rows_of_Bt = B.NumCols(); // Bt::Rows = B::Cols
 	int64_t ctx_cnt;
 	conn >> ctx_cnt;
+	if (verbose)
+        std::cerr << "To receive " << ctx_cnt << " ctxts" << std::endl;
     std::vector<Ctxt> ret_ctxs(ctx_cnt, ek);
 	for (size_t k = 0; k < ctx_cnt; k++)
-		conn >> ret_ctxs[k];
-	if (verbose)
-        std::cerr << "Received " << ret_ctxs.size() << " ctxts" << std::endl;
+		conn >> ret_ctxs.at(k);
     /// decrypt
     Matrix computed;
     computed.SetDims(A.NumRows(), B.NumCols());
     zero(computed);
     int x = 0;
     int y = 0;
-    auto itr = ret_ctxs.begin();
     std::vector<NTL::zz_pX> slots;
     NTL::ZZX decrypted;
 	double decrypt_time = 0.;
@@ -216,10 +215,11 @@ void play_server(tcp::iostream &conn,
     plain_B_blk.SetDims(MAX_X2, MAX_Y2);
     for (int y = 0; y < MAX_X2; y++) {
         for (int k = 0; k < MAX_Y2; k++) {
-            internal::BlockId blk = {y, k};
+            internal::BlockId blk = {0, 0};
             plain_B_blk[y][k] = internal::partition(Bt, blk, *ea, true);
         }
     }
+    std::cout << "partition\n";
 
     /// receving ciphertexts from the client
     std::vector<std::vector<Ctxt>> enc_A_blk;
@@ -228,21 +228,20 @@ void play_server(tcp::iostream &conn,
         for (int k = 0; k < MAX_Y1; k++)
             conn >> enc_A_blk[x][k];
     }
-
+    std::cout << "received " <<  MAX_X1 * MAX_Y1  << " ctxts" << std::endl;
     /// compute the matrix mulitplication
     double computation{0.};
 	std::list<Ctxt> results;
 	do {
 		AutoTimer timer(&computation);
 		for (long A_blk_idx = 0; A_blk_idx < MAX_X1; A_blk_idx++) {
-			assert(A_blk_idx < enc_A_blk.size());
 			for (long col_B = 0; col_B < B.NumCols(); col_B++) {
 				long B_blk_idx = col_B / l;
 				long offset = col_B % l;
 				assert(B_blk_idx <= plain_B_blk.NumRows());
 				Ctxt summation(ek);
 				for (long prtn = 0; prtn < MAX_Y1; prtn++) {
-					Ctxt enc_blk(enc_A_blk[A_blk_idx][prtn]);
+					Ctxt enc_blk(enc_A_blk.at(A_blk_idx).at(prtn));
 					NTL::ZZX plain_blk;
 					NTL::conv(plain_blk, plain_B_blk[B_blk_idx][prtn].polys.at(offset));
 					enc_blk.multByConstant(plain_blk);
@@ -255,7 +254,8 @@ void play_server(tcp::iostream &conn,
 	} while (0);
     srv_ben.eval_times.push_back(computation);
 	int64_t ctx_cnt = results.size();
-	conn << ctx_cnt;
+    std::cerr << "to send " << ctx_cnt << " ctxts" << std::endl;
+	conn << ctx_cnt << std::endl;
 	for (auto const& ctx : results)
 		conn << ctx;
 }
@@ -274,7 +274,7 @@ int run_client(std::string const& addr,
     const long L = 2;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
-    context.bitsPerLevel = 59;//30 + std::ceil(std::log(m)/2 + r * std::log(p));
+    context.bitsPerLevel = 30 + std::ceil(std::log(m)/2 + r * std::log(p));
     buildModChain(context, L);
     if (verbose) {
         std::cerr << "kappa = " << context.securityLevel() << std::endl;
