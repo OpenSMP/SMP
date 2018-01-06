@@ -31,10 +31,14 @@ void run_client() {
     connect << context;
     connect << ctx;
     connect.flush();
-    connect >> ctx;
+    Ctxt ctx_2(sk);
+    connect >> ctx_2;
+    NTL::ZZX dec_2;
+    sk.Decrypt(dec_2, ctx_2);
     NTL::ZZX dec;
     sk.Decrypt(dec, ctx);
-    std::cout << "return " << dec[0] << std::endl;
+    if (dec[0] != dec_2[0])
+        std::cout << "IO ERRR" << std::endl;
     connect.close();
 }
 
@@ -62,8 +66,8 @@ void run_server() {
 
             Ctxt ctx(pk);
             client >> ctx;
-            ctx.multiplyBy(ctx);
-            ctx.modDownToLevel(1);
+            //ctx.multiplyBy(ctx);
+            //ctx.modDownToLevel(1);
             client << ctx;
             client.close();
             break;

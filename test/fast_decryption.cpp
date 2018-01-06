@@ -3,6 +3,8 @@
 #include <HElib/EncryptedArray.h>
 #include <HElib/PAlgebra.h>
 #include <NTL/ZZX.h>
+#include "CryptGMM/Timer.hpp"
+#include "CryptGMM/literal.hpp"
 #include "CryptGMM/HElib.hpp"
 bool check(std::vector<ZZX> const& factors, long d) {
     std::cout << "factors: \n";
@@ -74,25 +76,54 @@ NTL::zz_p ModGetLeadingCoeff(NTL::zz_pX const& f,
     return ret;
 }
 
+std::vector<long> precompute_power(long beta, long p, long l)
+{
+    std::vector<long> beta_power_l(l);
+    /// (-beta)^k mod p for 0 <= k < l
+    for (long i = 0; i < l; i++)
+        beta_power_l[i] = NTL::PowerMod(i & 1 ? p - beta : beta, i, p);
+    return beta_power_l;
+}
+
+long mod_with_precomputed_table(NTL::ZZX const& poly,
+                                std::vector<long> const& tbl,
+                                FHEcontext const &context)
+{
+    long d = context.ea->getDegree();
+    long l = context.ea->size();
+    long p = context.alMod.getPPowR();
+    long phim = context.zMStar.getPhiM();
+    long ret = 0;
+    auto inv_p = NTL::PrepMulMod(p);
+    for (long i = 0; i < l; i++) {
+        long coeff_loc = (i + 1) * d - 1;
+        assert(coeff_loc < phim);
+        long coeff = NTL::to_long(NTL::coeff(poly, coeff_loc));
+        coeff = NTL::MulMod(coeff, tbl[i], p, inv_p);
+        ret = NTL::AddMod(ret, coeff, p);
+    }
+    return ret;
+}
+
 void faster() {
-    long m = 32;
-    long p = 401;
+    NTL::SetSeed(NTL::to_ZZ(132));
+    long m = 8192;
+    long p = 769;
+    NTL::zz_p::init(p);
     FHEcontext context(m, p, 1);
-    buildModChain(context, 4);
+    context.bitsPerLevel = 60;
+    buildModChain(context, 2);
     FHESecKey sk(context);
     sk.GenSecKey(64);
 
-    std::vector<NTL::zz_pX> factors; 
-    for (auto const& f: context.alMod.getFactorsOverZZ())  {
-        factors.emplace_back(NTL::conv<NTL::zz_pX>(f));
-    }
     const EncryptedArray *ea = context.ea;
     const long l = ea->size();
     const long d = ea->getDegree();
     std::cout << "l = " << l << ", d = " << d << std::endl;
+
+    std::vector<GMMPrecompTable> tables = precompute_gmm_tables(context);
     const auto &encoder = context.alMod.getDerived(PA_zz_p());
 
-    NTL::zz_p::init(p);
     std::vector<NTL::zz_pX> vec_A(l);
     std::vector<NTL::zz_pX> vec_B(l);
     for (long i = 0; i < l; i++) {
@@ -111,27 +142,49 @@ void faster() {
     sk.Encrypt(ctx_vec_B, NTL::conv<NTL::ZZX>(encoded_B));
     ctx_vec_A.multiplyBy(ctx_vec_B);
 
+    std::vector<NTL::zz_pX> slots;
     NTL::ZZX decrypted;
     sk.Decrypt(decrypted, ctx_vec_A);
-    NTL::zz_pX f = NTL::conv<NTL::zz_pX>(decrypted);
-    std::cout << "f = " << f << "\n";
-    std::cout << ModGetLeadingCoeff(f, factors[1]) << std::endl;
-    std::cout << ModGetLeadingCoeff(f, factors[0]) << std::endl;
-    // for (auto &h : factors) {
-    //      std::cout << ModGetLeadingCoeff(f, h) << " " ;
-    // }
-    // encoder.CRT_decompose(vec_A, 
-    // for (auto &s : vec_A) {
-    //     std::cout << NTL::coeff(s, d - 1) << " ";
-    // }
-    std::cout << "\n";
+    double raw_dec_time = 0.;
+    {
+        AutoTimer timer(&raw_dec_time);
+        rawDecode(slots, decrypted, context);
+    }
+
+    double table_dec_time = 0.;
+    std::vector<long> inner_products;
+    {
+        AutoTimer timer(&table_dec_time);
+        extract_inner_products(inner_products, decrypted, tables, context);
+    }
+    std::cout << inner_products << std::endl;
+
+    std::cout << raw_dec_time << " : " << table_dec_time << std::endl;
+}
+
+void test_poly_mod()
+{
+    NTL::zz_p::init(769);
+    NTL::zz_pX ply;
+    ply.SetLength(3);
+    ply[0] = 3; ply[2] = 1; // X^2 + 3
+    NTL::zz_pXModulus mod(ply);
+
+    NTL::zz_pX rnd;
+    NTL::random(rnd, 6);
+    std::cout << rnd << std::endl;
+
+    NTL::zz_pX rm;
+    NTL::rem(rm, rnd, mod);
+    std::cout << rm << std::endl;
 }
 
 void normal() {
     long m = 8192;
-    long p = 113;
+    long p = 769;
     FHEcontext context(m, p, 1);
-    buildModChain(context, 4);
+    context.bitsPerLevel = 59;
+    buildModChain(context, 2);
     FHESecKey sk(context);
     sk.GenSecKey(64);
 
@@ -177,29 +230,36 @@ void normal() {
     sk.Decrypt(decrypted, ctx_vec_A);
     std::vector<NTL::zz_pX> results;
     std::vector<NTL::ZZX> Results;
+    std::vector<double> raw_decodes;
     for (long i = 0; i < 100; i++) {
         FHE_NTIMER_START(EADecode);
         ea->decode(Results, decrypted);
         FHE_NTIMER_STOP(EADecode);
 
         FHE_NTIMER_START(rawDecode);
-        rawDecode(results, decrypted, context);
+        do {
+            raw_decodes.push_back(0.);
+            AutoTimer timer(&(raw_decodes.back()));
+            rawDecode(results, decrypted, context);
+        } while (0);
         FHE_NTIMER_STOP(rawDecode);
     }
-    for (auto &s : results) {
-        std::cout << NTL::coeff(s, d - 1) << " ";
-    }
-    std::cout << "\n";
+    //for (auto &s : results) {
+    //    std::cout << NTL::coeff(s, d - 1) << " ";
+    //}
+    //std::cout << "\n";
 
     printNamedTimer(std::cout, "EAEncode");
     printNamedTimer(std::cout, "EADecode");
     printNamedTimer(std::cout, "rawEncode");
     printNamedTimer(std::cout, "rawDecode");
+    auto decode = mean_std(raw_decodes);
+    std::cout << decode.first / 1000. << " +- " << decode.second << std::endl;
 }
 
 int main() {
-    normal();
-    // std::cout << "----------" << std::endl;
-    // faster();
+    //normal();
+    faster();
+    //test_poly_mod();
     return 0;
 }

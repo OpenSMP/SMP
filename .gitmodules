@@ -1,0 +1,3 @@
+[submodule "HElib"]
+	path = HElib
+	url = git@github.com:fionser/HElib.git
