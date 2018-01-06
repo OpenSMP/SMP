@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.2)
 include_directories(${GTEST_INCLUDE_DIRS})
 
 set(RUNTIME_LIBS   
-    cryptgmm 
     helib
+    cryptgmm
     ntl
     pthread
     boost_system

@@ -32,22 +32,21 @@ void zero(Matrix &mat) {
 void randomize(Matrix &mat, long p = 3) {
     for (long i = 0; i < mat.NumRows(); i++)
         for (long j = 0; j < mat.NumCols(); j++)
-            mat[i][j] = NTL::RandomBnd(p);
+            mat[i][j] = NTL::RandomBnd(4);
 }
 
 
 void fill_compute(Matrix& mat,
 				  long row_blk,
 				  long col,
-                  const std::vector<NTL::zz_pX> &slots,
+                  const std::vector<long> &inner_prod,
                   const EncryptedArray *ea)
 {
     const long l = ea->size();
-    const long d = ea->getDegree();
-    assert(slots.size() == l);
+    assert(inner_prod.size() == l);
 	const long row_start = row_blk * l;
     for (long ll = 0; ll < l; ll++) {
-        long computed = NTL::coeff(slots[ll], d - 1)._zz_p__rep;
+        long computed = inner_prod[ll];
         long row = row_start + ll;
 		if (row < mat.NumRows()) {
 			mat.put(row, col, computed);
@@ -128,6 +127,7 @@ void play_client(tcp::iostream &conn,
     if (verbose)
         std::cerr << "Sent " << MAX_X1 * MAX_Y1 << " ctxts" << std::endl;
 
+    std::vector<GMMPrecompTable> tbls = precompute_gmm_tables(context);
     /// waiting results
     long rows_of_A = A.NumRows();
     long rows_of_Bt = B.NumCols(); // Bt::Rows = B::Cols
@@ -144,7 +144,8 @@ void play_client(tcp::iostream &conn,
     zero(computed);
     int x = 0;
     int y = 0;
-    std::vector<NTL::zz_pX> slots;
+    std::vector<long> slots;
+    std::vector<NTL::zz_pX> _slots;
     NTL::ZZX decrypted;
 	double decrypt_time = 0.;
     double unpack_time = 0.;
@@ -159,7 +160,7 @@ void play_client(tcp::iostream &conn,
 		} while(0);
 		do {
 			AutoTimer timer(&one_unpack_time);
-			rawDecode(slots, decrypted, context);
+            extract_inner_products(slots, decrypted, tbls, context);
 		} while(0);
         decrypt_time += one_dec_time;
         unpack_time += one_unpack_time;
@@ -269,12 +270,12 @@ int run_client(std::string const& addr,
         return -1;
     }
     const long m = 8192;
-    const long p = 3329;
-    const long r = 2;
+    const long p = 84737;
+    const long r = 1;
     const long L = 2;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
-    context.bitsPerLevel = 59;
+    context.bitsPerLevel = 60;
     buildModChain(context, L);
     if (verbose) {
         std::cerr << "kappa = " << context.securityLevel() << std::endl;

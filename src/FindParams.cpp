@@ -27,7 +27,7 @@ bool check(NTL::ZZX const& factor) {
 }
 
 void DoublePacking(long m, long slots) {
-	long p = 3;
+	long p = NTL::NextPrime(81910);
 	long phim = phi_N(m);
 	assert(phim == (m >> 1));
 	while (true) {

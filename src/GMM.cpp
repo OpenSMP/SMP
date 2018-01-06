@@ -334,9 +334,9 @@ int run_client(long n1, long n2, long n3, bool verbose) {
         std::cerr << "Can not connect to server!" << std::endl;
         return -1;
     }
-    const long m = 8192;
+    const long m = 128;
     //const long p = 401;
-    const long p = 31489;
+    const long p = 113;
     const long r = 1;
     const long L = 2;
     NTL::zz_p::init(p);
