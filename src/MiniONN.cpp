@@ -51,8 +51,8 @@ void rotate_vector(Matrix &vec, long offset)
 	vec = tmp;
 }
 
-void encrypt_vector(EncVec &out, 
-					Matrix const& vec, 
+void encrypt_vector(EncVec &out,
+					Matrix const& vec,
 					FHESecKey const& key,
 					double *pack_time = nullptr)
 {
@@ -71,7 +71,7 @@ void encrypt_vector(EncVec &out,
 	}
 }
 
-void columns_to_vector(Matrix &vec, Matrix const&mat, long from, long to) 
+void columns_to_vector(Matrix &vec, Matrix const&mat, long from, long to)
 {
 	vec.SetDims((to - from) * mat.NumRows(), 1);
 	for (long j = from; j < to; j++) {
@@ -82,7 +82,7 @@ void columns_to_vector(Matrix &vec, Matrix const&mat, long from, long to)
 	}
 }
 
-void rows_to_vector(Matrix &vec, Matrix const&mat, long from, long to) 
+void rows_to_vector(Matrix &vec, Matrix const&mat, long from, long to)
 {
 	assert(from >= 0 && to > from && to <= mat.NumRows());
 	const long length = (to - from) * mat.NumCols();
@@ -96,8 +96,8 @@ void rows_to_vector(Matrix &vec, Matrix const&mat, long from, long to)
 }
 
 /// To fully pack the matrix, we concat each row of matrix into a long vector.
-void encrypt_matrix_as_vector(EncVec &out, 
-							  Matrix const& mat, 
+void encrypt_matrix_as_vector(EncVec &out,
+							  Matrix const& mat,
 							  FHESecKey const& key,
 							  double *pack_time = nullptr)
 {
@@ -157,6 +157,7 @@ struct ClientBenchmark {
     std::vector<double> unpack_times;
 	std::vector<double> dec_times;
     std::vector<double> total_times;
+    int ctx_sent, ctx_recv;
 };
 ClientBenchmark clt_ben;
 
@@ -170,8 +171,8 @@ void play_client(tcp::iostream &conn,
                  FHEcontext &context,
                  const long n1,
                  const long n2,
-                 const long n3,
-                 bool verbose) {
+                 const long n3)
+{
 	FHEPubKey ek(sk);
     ek.makeSymmetric();
     conn << ek; // send evaluation key
@@ -199,16 +200,18 @@ void play_client(tcp::iostream &conn,
     conn << static_cast<int64_t>(enc_vec.ctxts.size()) << std::endl;
     for (const auto &ctx : enc_vec.ctxts)
 		conn << ctx;
-	if (verbose)
-		std::cout << "Sent " << enc_vec.ctxts.size() << " ctxts" << std::endl;
+    clt_ben.ctx_sent = enc_vec.ctxts.size();
 
 	int64_t result_ctx_cnt;
 	conn >> result_ctx_cnt;
-	if (verbose)
-		std::cout << "Receive " << result_ctx_cnt << " ctxts" << std::endl;
+    clt_ben.ctx_recv = result_ctx_cnt;
     std::vector<Ctxt> result(result_ctx_cnt, ek);
 	for (size_t i = 0; i < result_ctx_cnt; i++)
 		conn >> result[i];
+    double eval_time = 0.;
+    conn >> eval_time;
+    srv_ben.eval_times.push_back(eval_time);
+
 	double dec_time;
 	double unpack_time;
 	std::vector<long> slots;
@@ -267,15 +270,11 @@ void play_server(tcp::iostream &conn,
     conn << static_cast<int64_t>(result.size()) << std::endl;
     for (const auto &ctx : result) // sending result back
 		conn << ctx;
+    conn << eval_time; // send back eval time for statistics
 }
 
 int run_client(std::string const& addr, long port,
-			   long n1, long n2, long n3, bool verbose) {
-    tcp::iostream conn(addr, std::to_string(port));
-    if (!conn) {
-        std::cerr << "Can not connect to server!" << std::endl;
-        return -1;
-    }
+			   long n1, long n2, long n3) {
     const long m = 8192;
     const long p = 40961;
     const long r = 1;
@@ -284,22 +283,27 @@ int run_client(std::string const& addr, long port,
     FHEcontext context(m, p, r);
     context.bitsPerLevel = 20; // no sense, just trial and error to find this value.
     buildModChain(context, L);
-    if (verbose) {
-        std::cout << "kappa = " << context.securityLevel() << std::endl;
-        std::cout << "slot = " << context.ea->size() << std::endl;
-        std::cout << "degree = " << context.ea->getDegree() << std::endl;
-    }
+    std::cerr << "kappa = " << context.securityLevel() << std::endl;
+    std::cerr << "slot = " << context.ea->size() << std::endl;
+    std::cerr << "degree = " << context.ea->getDegree() << std::endl;
     FHESecKey sk(context);
     sk.GenSecKey(64);
-    /// send FHEcontext obj
-    send_context(conn, context);
-    double all_time;
-    do {
-        AutoTimer time(&all_time);
-        play_client(conn, sk, context, n1, n2, n3, verbose);
-    } while(0);
-    clt_ben.total_times.push_back(all_time);
-    conn.close();
+    for (long t = 0; t < REPEATS; t++) {
+        tcp::iostream conn(addr, std::to_string(port));
+        if (!conn) {
+            std::cerr << "Can not connect to server!" << std::endl;
+            return -1;
+        }
+        /// send FHEcontext obj
+        send_context(conn, context);
+        double all_time;
+        do {
+            AutoTimer time(&all_time);
+            play_client(conn, sk, context, n1, n2, n3);
+        } while(0);
+        clt_ben.total_times.push_back(all_time);
+        conn.close();
+    }
     return 1;
 }
 
@@ -336,30 +340,26 @@ int main(int argc, char *argv[]) {
     argmap.parse(argc, argv);
     if (role == 0) {
         run_server(port, n1, n2, n3);
-        auto eval_time = mean_std(srv_ben.eval_times);
-        printf("Server evaluation time\n");
-        printf("%.3f \\pm %.3f\n", eval_time.first, eval_time.second);
     } else if (role == 1) {
-        for (long run = 0; run < REPEATS; run++) {
-			int st = run_client(addr, port, n1, n2, n3, run == 0);
-            if (st < 0)
-				break;
-		}
-        printf("Client pack enc dec unpack total\n");
+        int st = run_client(addr, port, n1, n2, n3);
 		auto times = mean_std(clt_ben.pack_times);
-		printf("%.3f \\pm %.3f ", times.first, times.second);
+		printf("%.3f %.3f ", times.first, times.second);
 
 		times = mean_std(clt_ben.enc_times);
-		printf("%.3f \\pm %.3f ", times.first, times.second);
+		printf("%.3f %.3f ", times.first, times.second);
 
         times = mean_std(clt_ben.dec_times);
-        printf("%.3f \\pm %.3f ", times.first, times.second);
+        printf("%.3f %.3f ", times.first, times.second);
 
 		times = mean_std(clt_ben.unpack_times);
-		printf("%.3f \\pm %.3f ", times.first, times.second);
+		printf("%.3f %.3f ", times.first, times.second);
 
         times = mean_std(clt_ben.total_times);
-        printf("%.3f \\pm %.3f\n", times.first, times.second);
+        printf("%.3f %.3f ", times.first, times.second);
+
+        times = mean_std(srv_ben.eval_times);
+        printf("%.3f %.3f ", times.first, times.second);
+        printf("%d %d\n", clt_ben.ctx_sent, clt_ben.ctx_recv);
     } else {
 		argmap.usage("General Matrix Multiplication for |N*M| * |M*D|");
 		return -1;
@@ -390,7 +390,7 @@ int main(int argc, char *argv[]) {
 	std::cout << "security level " << context.securityLevel() << std::endl;
 	FHESecKey sk(context);
 	sk.GenSecKey(64);
-	auto ea = context.ea;	
+	auto ea = context.ea;
 	EncVec enc_vec;
 	double pack_time;
 	double enc_time;
@@ -413,7 +413,7 @@ int main(int argc, char *argv[]) {
 			ea->decrypt(ctx, sk, slots);
 		}
 	}
-	printf("%.3f %.3f %.3f %zd %zd\n", 
+	printf("%.3f %.3f %.3f %zd %zd\n",
 		   enc_time, dec_time, eval_time,
 		   enc_vec.ctxts.size(), result.size());
 	return 0;

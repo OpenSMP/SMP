@@ -17,7 +17,7 @@
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
-constexpr int REPEAT = 1;
+constexpr int REPEAT = 10;
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -62,16 +62,21 @@ struct ClientBenchmark {
     std::vector<double> dec_times;
     std::vector<double> unpack_times;
     std::vector<double> total_times;
+    int ctx_sent, ctx_recv;
 };
 ClientBenchmark clt_ben;
+
+struct ServerBenchmark {
+    std::vector<double> eval_times;
+};
+ServerBenchmark srv_ben;
 
 void play_client(tcp::iostream &conn,
                  FHESecKey &sk,
                  FHEcontext &context,
                  const long n1,
                  const long n2,
-                 const long n3,
-                 bool verbose) {
+                 const long n3) {
     FHEPubKey ek(sk);
 	//* Convert to evalution key.
 	//* This function is not provided by the origin HElib. Checkout our fork.
@@ -124,8 +129,7 @@ void play_client(tcp::iostream &conn,
         for (auto const& ctx : row)
             conn << ctx;
     }
-    if (verbose)
-        std::cerr << "Sent " << MAX_X1 * MAX_Y1 << " ctxts" << std::endl;
+    clt_ben.ctx_sent = MAX_X1 * MAX_Y1;
 
     std::vector<GMMPrecompTable> tbls = precompute_gmm_tables(context);
     /// waiting results
@@ -133,11 +137,13 @@ void play_client(tcp::iostream &conn,
     long rows_of_Bt = B.NumCols(); // Bt::Rows = B::Cols
 	int64_t ctx_cnt = 0;
 	conn >> ctx_cnt;
-	if (verbose)
-        std::cerr << "To receive " << ctx_cnt << " ctxts" << std::endl;
+    clt_ben.ctx_recv = ctx_cnt;
     std::vector<Ctxt> ret_ctxs(ctx_cnt, ek);
 	for (size_t k = 0; k < ctx_cnt; k++)
 		conn >> ret_ctxs.at(k);
+    double eval_time = 0.;
+    conn >> eval_time;
+    srv_ben.eval_times.push_back(eval_time);
     /// decrypt
     Matrix computed;
     computed.SetDims(A.NumRows(), B.NumCols());
@@ -177,11 +183,6 @@ void play_client(tcp::iostream &conn,
 	if (!dec_pass)
 		std::cerr << "Decryption might fail" << std::endl;
 }
-
-struct ServerBenchmark {
-    std::vector<double> eval_times;
-};
-ServerBenchmark srv_ben;
 
 void play_server(tcp::iostream &conn,
                  const long n1,
@@ -253,47 +254,49 @@ void play_server(tcp::iostream &conn,
 			}
 		}
 	} while (0);
-    srv_ben.eval_times.push_back(computation);
+
 	int64_t ctx_cnt = results.size();
-    std::cerr << "to send " << ctx_cnt << " ctxts" << std::endl;
 	conn << ctx_cnt << std::endl;
 	for (auto const& ctx : results)
 		conn << ctx;
+    /// sent the evalution time, just for statistics
+    conn << computation;
 }
 
-int run_client(std::string const& addr,
-               long port,
-               long n1, long n2, long n3, bool verbose) {
-    tcp::iostream conn(addr, std::to_string(port));
-    if (!conn) {
-        std::cerr << "Can not connect to server!" << std::endl;
-        return -1;
-    }
+int run_client(std::string const& addr, long port,
+               long n1, long n2, long n3) {
     const long m = 8192;
     const long p = 84737;
     const long r = 1;
     const long L = 2;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
-    context.bitsPerLevel = 60;
+    context.bitsPerLevel = 51;
     buildModChain(context, L);
-    if (verbose) {
-        std::cerr << "kappa = " << context.securityLevel() << std::endl;
-        std::cerr << "slot = " << context.ea->size() << std::endl;
-        std::cerr << "degree = " << context.ea->getDegree() << std::endl;
-    }
+    std::cerr << "kappa = " << context.securityLevel() << std::endl;
+    std::cerr << "slot = " << context.ea->size() << std::endl;
+    std::cerr << "degree = " << context.ea->getDegree() << std::endl;
     FHESecKey sk(context);
     sk.GenSecKey(64);
-    /// send FHEcontext obj
-    send_context(conn, context);
-    double all_time;
-    do {
-        AutoTimer time(&all_time);
-        /// send the evaluation key
-        play_client(conn, sk, context, n1, n2, n3, verbose);
-    } while(0);
-    clt_ben.total_times.push_back(all_time);
-    conn.close();
+
+    for (long t = 0; t < REPEAT; t++) {
+        tcp::iostream conn(addr, std::to_string(port));
+        if (!conn) {
+            std::cerr << "Can not connect to server!" << std::endl;
+            return -1;
+        }
+
+        /// send FHEcontext obj
+        double all_time;
+        do {
+            send_context(conn, context);
+            AutoTimer time(&all_time);
+            /// send the evaluation key
+            play_client(conn, sk, context, n1, n2, n3);
+        } while(0);
+        clt_ben.total_times.push_back(all_time);
+        conn.close();
+    }
     return 1;
 }
 
@@ -330,13 +333,8 @@ int main(int argc, char *argv[]) {
     argmap.parse(argc, argv);
     if (role == 0) {
         run_server(port, n1, n2, n3);
-        auto eval_time = mean_std(srv_ben.eval_times);
-        printf("Server evaluation time\n");
-        printf("%.3f %.3f\n", eval_time.first, eval_time.second);
     } else if (role == 1) {
-        for (long run = 0; run < REPEAT; run++)
-            run_client(addr, port, n1, n2, n3, run == 0);
-        printf("Client pack enc dec unpack total\n");
+        run_client(addr, port, n1, n2, n3);
         auto time = mean_std(clt_ben.pack_times);
         printf("%.3f %.3f ", time.first, time.second);
 
@@ -350,7 +348,11 @@ int main(int argc, char *argv[]) {
         printf("%.3f %.3f ", time.first, time.second);
 
         time = mean_std(clt_ben.total_times);
-        printf("%.3f %.3f\n", time.first, time.second);
+        printf("%.3f %.3f ", time.first, time.second);
+
+        time = mean_std(srv_ben.eval_times);
+        printf("%.3f %.3f ", time.first, time.second);
+        printf("%d %d\n", clt_ben.ctx_sent, clt_ben.ctx_recv);
     } else {
 		argmap.usage("General Matrix Multiplication for |N*M| * |M*D|");
 		return -1;
