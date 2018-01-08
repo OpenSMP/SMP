@@ -2,7 +2,7 @@ SET(SRC
     Matrix.cpp
     literal.cpp
     HElib.cpp
-	net_io.cpp
+    net_io.cpp
     )
 
 add_library(cryptgmm ${SRC})
@@ -21,6 +21,8 @@ target_link_libraries(GMM ${RUNTIME_LIBS})
 add_executable(GMM2 GMM-2.cpp)
 target_link_libraries(GMM2 ${RUNTIME_LIBS})
 
+add_executable(benGMM BenchmarkGMM.cpp)
+target_link_libraries(benGMM ${RUNTIME_LIBS})
 
 add_executable(MiniONN MiniONN.cpp)
 target_link_libraries(MiniONN ${RUNTIME_LIBS})
