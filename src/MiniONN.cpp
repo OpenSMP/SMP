@@ -276,12 +276,12 @@ void play_server(tcp::iostream &conn,
 int run_client(std::string const& addr, long port,
 			   long n1, long n2, long n3) {
     const long m = 8192;
-    const long p = 40961;
+    const long p = 65537;
     const long r = 1;
     const long L = 3;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
-    context.bitsPerLevel = 20; // no sense, just trial and error to find this value.
+    context.bitsPerLevel = 20; // trial and error to find this value.
     buildModChain(context, L);
     std::cerr << "kappa = " << context.securityLevel() << std::endl;
     std::cerr << "slot = " << context.ea->size() << std::endl;

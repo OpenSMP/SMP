@@ -6,7 +6,7 @@
 #include <HElib/FHEContext.h>
 #include <iostream>
 void MiniONN(long m) {
-    long p = NTL::RandomPrime_long(10, 20);
+    long p = NTL::RandomPrime_long(16, 20);
     while (true) {
         long d = multOrd(p, m);
         if (d == 1)
@@ -49,8 +49,8 @@ void DoublePacking(long m, long slots) {
 }
 
 int main() {
-    //MiniONN(8192);
-	DoublePacking(8192, 128);
+    MiniONN(8192);
+	//DoublePacking(8192, 128);
     return 0;
 }
 

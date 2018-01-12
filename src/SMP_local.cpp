@@ -226,7 +226,7 @@ void play_client(FHESecKey &sk,
 
 int run(long n1, long n2, long n3) {
 	const long m = 8192;
-	const long p = 84737;
+	const long p = 70913;
 	const long r = 1;
 	const long L = 2;
 	NTL::zz_p::init(p);
