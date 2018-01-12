@@ -27,5 +27,3 @@ add_exec(SMP)
 add_exec(SMP_local)
 add_exec(faster_unpacking)
 add_exec(fast_decryption)
-add_exec(measure_dec)
-
