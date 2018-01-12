@@ -4,6 +4,8 @@
 #include <vector>
 #include <NTL/lzz_p.h>
 class FHEcontext;
+class FHESecKey;
+class Ctxt;
 namespace NTL { class zz_pX; class ZZX; }
 /// encode and decode without using the G(X) as the EncrypedArray does.
 void rawEncode(NTL::zz_pX &out, 
@@ -34,4 +36,10 @@ void extract_inner_products(std::vector<long> &out,
                             std::vector<GMMPrecompTable> const& tables,
                             FHEcontext const& context);
 
+void faster_decrypt(NTL::Vec<long> &out, FHESecKey const& key, Ctxt const &ctx);
+
+void extract_inner_products(std::vector<long> &out,
+                            NTL::Vec<long> const& poly,
+                            std::vector<GMMPrecompTable> const& tables,
+                            FHEcontext const& context);
 #endif //CRYPT_GMM_HELIB_HPP

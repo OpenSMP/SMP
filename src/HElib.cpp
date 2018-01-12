@@ -106,6 +106,26 @@ long extract_inner_product(NTL::ZZX const& poly,
     return ret;
 }
 
+long extract_inner_product(NTL::Vec<long> const& poly,
+                           GMMPrecompTable const& tbl,
+                           FHEcontext const& context)
+{
+    long d = context.ea->getDegree();
+    long l = context.ea->size();
+    long p = context.alMod.getPPowR();
+    long phim = context.zMStar.getPhiM();
+    assert(poly.length() == phim);
+    long ret = 0;
+    for (long i = 0; i < l; i++) {
+        long coeff_loc = (i + 1) * d - 1;
+        assert(coeff_loc < phim);
+        long coeff = poly.at(coeff_loc) % p;
+        coeff = NTL::MulMod(coeff, tbl.beta_powers.at(i), p, tbl.inv_p);
+        ret = NTL::AddMod(ret, coeff, p);
+    }
+    return ret;
+}
+
 void extract_inner_products(std::vector<long> &out,
                             NTL::ZZX const& poly,
                             std::vector<GMMPrecompTable> const& tables,
@@ -118,3 +138,25 @@ void extract_inner_products(std::vector<long> &out,
     }
 }
 
+void extract_inner_products(std::vector<long> &out,
+                            NTL::Vec<long> const& poly,
+                            std::vector<GMMPrecompTable> const& tables,
+                            FHEcontext const& context)
+{
+    out.clear();
+    out.reserve(context.ea->size());
+    for (const auto &tbl : tables) {
+        out.push_back(extract_inner_product(poly, tbl, context));
+    }
+}
+
+void faster_decrypt(NTL::Vec<long> &out,
+                    FHESecKey const& sk,
+                    Ctxt const& ctx)
+{
+    const FHEcontext& context = sk.getContext();
+    assert(ctx.getPrimeSet().card() == 1);
+    DoubleCRT dcrt(context, ctx.getPrimeSet()); // Set to zero
+    sk.Decrypt(dcrt, ctx);
+    dcrt.getOneRow(out, 0);
+}

@@ -152,7 +152,7 @@ void play_client(tcp::iostream &conn,
     int y = 0;
     std::vector<long> slots;
     std::vector<NTL::zz_pX> _slots;
-    NTL::ZZX decrypted;
+    NTL::Vec<long> decrypted;
 	double decrypt_time = 0.;
     double unpack_time = 0.;
 	long ctx_idx = 0;
@@ -162,7 +162,7 @@ void play_client(tcp::iostream &conn,
 		do {
 			AutoTimer timer(&one_dec_time);
 			dec_pass &= ctx.isCorrect();
-			sk.Decrypt(decrypted, ctx);
+			faster_decrypt(decrypted, sk, ctx);
 		} while(0);
 		do {
 			AutoTimer timer(&one_unpack_time);

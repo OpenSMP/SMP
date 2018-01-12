@@ -192,7 +192,7 @@ void play_client(FHESecKey &sk,
 	int x = 0;
 	int y = 0;
 	std::vector<long> slots;
-	NTL::ZZX decrypted;
+    NTL::Vec<long> decrypted;
 	double decrypt_time = 0.;
 	double unpack_time = 0.;
 	long ctx_idx = 0;
@@ -202,7 +202,8 @@ void play_client(FHESecKey &sk,
 		do {
 			AutoTimer timer(&one_dec_time);
 			dec_pass &= ctx.isCorrect();
-			sk.Decrypt(decrypted, ctx);
+			faster_decrypt(decrypted, sk, ctx);
+			//sk.Decrypt(decrypted, ctx);
 		} while(0);
 		do {
 			AutoTimer timer(&one_unpack_time);
@@ -248,9 +249,9 @@ int run(long n1, long n2, long n3) {
 
 int main(int argc, char *argv[]) {
 	ArgMapping argmap;
-	long n1 = 8;
-	long n2 = 8;
-	long n3 = 8;
+	long n1 = 128;
+	long n2 = 128;
+	long n3 = 128;
 	argmap.arg("N", n1, "n1");
 	argmap.arg("M", n2, "n2");
 	argmap.arg("D", n3, "n3");
