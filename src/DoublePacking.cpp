@@ -1,32 +1,18 @@
 #include "CryptGMM/Matrix.hpp"
+#include "CryptGMM/DoublePacking.hpp"
 #include "HElib/EncryptedArray.h"
-namespace NTL { class ZZX; }
 namespace internal 
 {
 static inline long round_div(long a, long b) {
     return (a + b - 1) / b;
 }
 
-static void duplicate(PackedRows &pr, long used) {
-    size_t sze = pr.polys.size();
-    if (used <= 0)
-        return ;
-    long num_copies = sze / used;
-    if (num_copies <= 1) // no enough space
-        return;
-    for (long offset = used; offset < sze; offset += used) {
-        for (long j = 0; offset + j < sze; j++)
-            pr.polys[offset + j] = pr.polys[j];
-    }
-    pr.num_duplication = num_copies;
-}
-
 /// Partition one block of the matrix into each slot of CRT packing. 
 /// That is one row of the block matrix as one slot (i.e., poly).
 PackedRows partition(Matrix const& matrix, BlockId const& blk, 
-                     Packer const& packer, const bool backward) {
-    const long d = packer.getDegree(); /// degree of the slot
-    const long l = packer.size(); /// number of slots
+                     const EncryptedArray *ea, const bool backward) {
+    const long d = ea->getDegree(); /// degree of the slot
+    const long l = ea->size(); /// number of slots
     const long MAX_X = round_div(matrix.NumRows(), l);
     const long MAX_Y = round_div(matrix.NumCols(), d);
     assert(blk.x >= 0 && blk.x < MAX_X);
@@ -48,11 +34,10 @@ PackedRows partition(Matrix const& matrix, BlockId const& blk,
             long coeff = col - col_start;
             if (backward)
                 coeff = d - 1 - coeff;
-            assert(coeff >= 0 && coeff <= NTL::deg(ret.polys[offset]));
+            assert(coeff >= 0 && coeff <= d - 1);
             NTL::SetCoeff(ret.polys[offset], coeff, matrix[row][col]);
         }
     }
-    //duplicate(ret, row_end - row_start);
     return ret;
 }
 } // namespace internal

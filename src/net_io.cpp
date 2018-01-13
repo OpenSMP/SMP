@@ -16,3 +16,12 @@ FHEcontext receive_context(std::istream &s)
     s >> context;
     return context;
 }
+
+void receive_context(std::istream &s, FHEcontext **out)
+{
+	unsigned long m, p, r;
+    std::vector<long> gens, ords;
+    readContextBase(s, m, p, r, gens, ords);
+	*out = new FHEcontext(m, p, r, gens, ords);
+    s >> **out;
+}

@@ -4,12 +4,13 @@
 #include <HElib/EncryptedArray.h>
 #include <HElib/NumbTh.h>
 
-#include "CryptGMM/DoublePacking.hpp"
+//#include "CryptGMM/DoublePacking.hpp"
 #include "CryptGMM/Matrix.hpp"
 #include "CryptGMM/Timer.hpp"
 #include "CryptGMM/HElib.hpp"
 #include "CryptGMM/literal.hpp"
 #include "CryptGMM/network/net_io.hpp"
+#include "CryptGMM/SMPServer.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -17,7 +18,7 @@
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
-constexpr int REPEAT = 10;
+constexpr int REPEAT = 2;
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -32,7 +33,7 @@ void zero(Matrix &mat) {
 void randomize(Matrix &mat, long p = 3) {
     for (long i = 0; i < mat.NumRows(); i++)
         for (long j = 0; j < mat.NumCols(); j++)
-            mat[i][j] = NTL::RandomBnd(4);
+            mat[i][j] = NTL::RandomBnd(p);
 }
 
 
@@ -86,10 +87,10 @@ void play_client(tcp::iostream &conn,
     const long l = ea->size();
     const long d = ea->getDegree();
 
-    NTL::SetSeed(NTL::to_ZZ(123));
     Matrix A, B, ground_truth;
     A.SetDims(n1, n2);
     B.SetDims(n2, n3);
+    NTL::SetSeed(NTL::to_ZZ(123));
     randomize(A, ek.getPtxtSpace());
     randomize(B, ek.getPtxtSpace());
     ground_truth = mul(A, B);
@@ -108,7 +109,7 @@ void play_client(tcp::iostream &conn,
 		for (int k = 0; k < MAX_Y1; k++) {
 			internal::BlockId blk = {x, k};
 			double one_pack_time, one_enc_time;
-			auto block = internal::partition(A, blk, *ea, false);
+			auto block = internal::partition(A, blk, ea, false);
 			{/// packing
 				AutoTimer timer(&one_pack_time);
 				rawEncode(packed_poly, block.polys, context);
@@ -152,7 +153,8 @@ void play_client(tcp::iostream &conn,
     int y = 0;
     std::vector<long> slots;
     std::vector<NTL::zz_pX> _slots;
-    NTL::Vec<long> decrypted;
+    //NTL::Vec<long> decrypted;
+	NTL::ZZX decrypted;
 	double decrypt_time = 0.;
     double unpack_time = 0.;
 	long ctx_idx = 0;
@@ -162,7 +164,8 @@ void play_client(tcp::iostream &conn,
 		do {
 			AutoTimer timer(&one_dec_time);
 			dec_pass &= ctx.isCorrect();
-			faster_decrypt(decrypted, sk, ctx);
+			//faster_decrypt(decrypted, sk, ctx);
+			sk.Decrypt(decrypted, ctx);
 		} while(0);
 		do {
 			AutoTimer timer(&one_unpack_time);
@@ -184,84 +187,84 @@ void play_client(tcp::iostream &conn,
 		std::cerr << "Decryption might fail" << std::endl;
 }
 
-void play_server(tcp::iostream &conn,
-                 const long n1,
-                 const long n2,
-                 const long n3) {
-    auto context = receive_context(conn);
-    NTL::zz_p::init(context.zMStar.getP());
-    const EncryptedArray *ea = context.ea;
-    const long l = ea->size();
-    const long d = ea->getDegree();
-    FHEPubKey ek(context);
-    conn >> ek;
-
-    NTL::SetSeed(NTL::to_ZZ(123)); /// use same seed for debugging
-    Matrix A, B, ground_truth;
-    A.SetDims(n1, n2);
-    B.SetDims(n2, n3);
-    randomize(A, ek.getPtxtSpace());
-    randomize(B, ek.getPtxtSpace());
-    ground_truth = mul(A, B);
-    const long MAX_X1 = round_div(A.NumRows(), l);
-    const long MAX_Y1 = round_div(A.NumCols(), d);
-
-    Matrix Bt;
-	/// We compute A*B, but we use B tranpose.
-	/// This allow us to write one internal::partition()
-	/// for row-major case.
-    transpose(&Bt, B);
-    const long MAX_X2 = round_div(Bt.NumRows(), l);
-    const long MAX_Y2 = round_div(Bt.NumCols(), d);
-	assert(MAX_Y1 == MAX_Y2);
-    NTL::Mat<internal::PackedRows> plain_B_blk; // 2D-array of polynomials
-    plain_B_blk.SetDims(MAX_X2, MAX_Y2);
-    for (int y = 0; y < MAX_X2; y++) {
-        for (int k = 0; k < MAX_Y2; k++) {
-            internal::BlockId blk = {y, k};
-            plain_B_blk[y][k] = internal::partition(Bt, blk, *ea, true);
-        }
-    }
-
-    /// receving ciphertexts from the client
-    std::vector<std::vector<Ctxt>> enc_A_blk;
-    enc_A_blk.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, ek));
-    for (int x = 0; x < MAX_X1; x++) {
-        for (int k = 0; k < MAX_Y1; k++)
-            conn >> enc_A_blk[x][k];
-    }
-
-    /// compute the matrix mulitplication
-    double computation{0.};
-	std::list<Ctxt> results;
-	do {
-		AutoTimer timer(&computation);
-		for (long A_blk_idx = 0; A_blk_idx < MAX_X1; A_blk_idx++) {
-			for (long col_B = 0; col_B < B.NumCols(); col_B++) {
-				long B_blk_idx = col_B / l;
-				long offset = col_B % l;
-				assert(B_blk_idx <= plain_B_blk.NumRows());
-				Ctxt summation(ek);
-				for (long prtn = 0; prtn < MAX_Y1; prtn++) {
-					Ctxt enc_blk(enc_A_blk.at(A_blk_idx).at(prtn));
-					NTL::ZZX plain_blk;
-					NTL::conv(plain_blk, plain_B_blk[B_blk_idx][prtn].polys.at(offset));
-					enc_blk.multByConstant(plain_blk);
-					summation += enc_blk;
-				}
-				summation.modDownToLevel(1);
-				results.push_back(summation);
-			}
-		}
-	} while (0);
-
-	int64_t ctx_cnt = results.size();
-	conn << ctx_cnt << std::endl;
-	for (auto const& ctx : results)
-		conn << ctx;
-    /// sent the evalution time, just for statistics
-    conn << computation;
-}
+// void play_server(tcp::iostream &conn,
+//                  const long n1,
+//                  const long n2,
+//                  const long n3) {
+//     auto context = receive_context(conn);
+//     NTL::zz_p::init(context.zMStar.getP());
+//     const EncryptedArray *ea = context.ea;
+//     const long l = ea->size();
+//     const long d = ea->getDegree();
+//     FHEPubKey ek(context);
+//     conn >> ek;
+//
+//     NTL::SetSeed(NTL::to_ZZ(123)); /// use same seed for debugging
+//     Matrix A, B, ground_truth;
+//     A.SetDims(n1, n2);
+//     B.SetDims(n2, n3);
+//     randomize(A, ek.getPtxtSpace());
+//     randomize(B, ek.getPtxtSpace());
+//     ground_truth = mul(A, B);
+//     const long MAX_X1 = round_div(A.NumRows(), l);
+//     const long MAX_Y1 = round_div(A.NumCols(), d);
+//
+//     Matrix Bt;
+// 	/// We compute A*B, but we use B tranpose.
+// 	/// This allow us to write one internal::partition()
+// 	/// for row-major case.
+//     transpose(&Bt, B);
+//     const long MAX_X2 = round_div(Bt.NumRows(), l);
+//     const long MAX_Y2 = round_div(Bt.NumCols(), d);
+// 	assert(MAX_Y1 == MAX_Y2);
+//     NTL::Mat<internal::PackedRows> plain_B_blk; // 2D-array of polynomials
+//     plain_B_blk.SetDims(MAX_X2, MAX_Y2);
+//     for (int y = 0; y < MAX_X2; y++) {
+//         for (int k = 0; k < MAX_Y2; k++) {
+//             internal::BlockId blk = {y, k};
+//             plain_B_blk[y][k] = internal::partition(Bt, blk, ea, true);
+//         }
+//     }
+//
+//     /// receving ciphertexts from the client
+//     std::vector<std::vector<Ctxt>> enc_A_blk;
+//     enc_A_blk.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, ek));
+//     for (int x = 0; x < MAX_X1; x++) {
+//         for (int k = 0; k < MAX_Y1; k++)
+//             conn >> enc_A_blk[x][k];
+//     }
+//
+//     /// compute the matrix mulitplication
+//     double computation{0.};
+// 	std::list<Ctxt> results;
+// 	do {
+// 		AutoTimer timer(&computation);
+// 		for (long A_blk_idx = 0; A_blk_idx < MAX_X1; A_blk_idx++) {
+// 			for (long col_B = 0; col_B < B.NumCols(); col_B++) {
+// 				long B_blk_idx = col_B / l;
+// 				long offset = col_B % l;
+// 				assert(B_blk_idx <= plain_B_blk.NumRows());
+// 				Ctxt summation(ek);
+// 				for (long prtn = 0; prtn < MAX_Y1; prtn++) {
+// 					Ctxt enc_blk(enc_A_blk.at(A_blk_idx).at(prtn));
+// 					NTL::ZZX plain_blk;
+// 					NTL::conv(plain_blk, plain_B_blk[B_blk_idx][prtn].polys.at(offset));
+// 					enc_blk.multByConstant(plain_blk);
+// 					summation += enc_blk;
+// 				}
+// 				summation.modDownToLevel(1);
+// 				results.push_back(summation);
+// 			}
+// 		}
+// 	} while (0);
+//
+// 	int64_t ctx_cnt = results.size();
+// 	conn << ctx_cnt << std::endl;
+// 	for (auto const& ctx : results)
+// 		conn << ctx;
+//     /// sent the evalution time, just for statistics
+//     conn << computation;
+// }
 
 int run_client(std::string const& addr, long port,
                long n1, long n2, long n3) {
@@ -310,7 +313,9 @@ int run_server(long port, long n1, long n2, long n3) {
         boost::system::error_code err;
         acceptor.accept(*conn.rdbuf(), err);
         if (!err) {
-            play_server(conn, n1, n2, n3);
+			SMPServer server;
+			server.run(conn, n1, n2, n3);
+            //play_server(conn, n1, n2, n3);
         }
     }
     return 0;

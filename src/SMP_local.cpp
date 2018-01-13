@@ -96,7 +96,7 @@ void play_server(std::list<Ctxt> &results,
 	for (int y = 0; y < MAX_X2; y++) {
 		for (int k = 0; k < MAX_Y2; k++) {
 			internal::BlockId blk = {y, k};
-			plain_B_blk[y][k] = internal::partition(Bt, blk, *ea, true);
+			plain_B_blk[y][k] = internal::partition(Bt, blk, ea, true);
 		}
 	}
 
@@ -161,7 +161,7 @@ void play_client(FHESecKey &sk,
 		for (int k = 0; k < MAX_Y1; k++) {
 			internal::BlockId blk = {x, k};
 			double one_pack_time, one_enc_time;
-			auto block = internal::partition(A, blk, *ea, false);
+			auto block = internal::partition(A, blk, ea, false);
 			{/// packing
 				AutoTimer timer(&one_pack_time);
 				rawEncode(packed_poly, block.polys, context);
@@ -183,7 +183,7 @@ void play_client(FHESecKey &sk,
 	long rows_of_A = A.NumRows();
 	long rows_of_Bt = B.NumCols(); // Bt::Rows = B::Cols
         std::list<Ctxt> ret_ctxs;
-        play_server(ret_ctxs, n1, B, uploading, ek, context);
+        play_server(ret_ctxs, n1, B, uploading, sk, context);
         clt_ben.ctx_rev = ret_ctxs.size();
 	/// decrypt
 	Matrix computed;

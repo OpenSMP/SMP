@@ -9,7 +9,7 @@
 #include <vector>
 
 class FHESecKey;
-using Packer = EncryptedArray;
+class EncryptedArray;
 namespace internal {
     struct BlockId {
         int x, y; 
@@ -22,8 +22,7 @@ namespace internal {
 
     PackedRows partition(Matrix const& matrix, 
                          BlockId const& blk, 
-                         Packer const& packer,
+						 const EncryptedArray *packer,
                          const bool backward);
 }
-#include "CryptGMM/internal/DoublePacking.hpp"
 #endif //CRYPTGMM_DOUBLEPACKING_HPP

@@ -3,6 +3,8 @@ SET(SRC
     literal.cpp
     HElib.cpp
     net_io.cpp
+	SMPServer.cpp
+	DoublePacking.cpp
     )
 
 add_library(cryptgmm ${SRC})
