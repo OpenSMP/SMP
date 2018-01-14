@@ -1,6 +1,7 @@
 #include "CryptGMM/SMPServer.hpp"
 #include "CryptGMM/network/net_io.hpp"
 #include "CryptGMM/Timer.hpp"
+#include "CryptGMM/literal.hpp"
 
 #include <HElib/FHE.h>
 #include <HElib/FHEContext.h>
@@ -26,6 +27,33 @@ SMPServer::~SMPServer()
 		delete ek;
 }
 
+void SMPServer::print_statistics() const
+{
+	double total = 0.;
+	printf("setup process_columns receive_ctx evaluate response_ctx total\n");
+	auto time = mean_std(setup_times);
+	printf("%.3f ", time.first);
+	total += time.first;
+
+	time = mean_std(process_columns_times);
+	printf("%.3f ", time.first);
+	total += time.first;
+
+	time = mean_std(receive_ctx_times);
+	printf("%.3f ", time.first);
+	total += time.first;
+
+	time = mean_std(evaluate_times);
+	printf("%.3f ", time.first);
+	total += time.first;
+
+	time = mean_std(response_ctx_times);
+	printf("%.3f ", time.first);
+	total += time.first;
+	
+	printf(": %.3f\n", total);
+}
+
 void SMPServer::run(tcp::iostream &conn, 
 					const long n1,
 					const long n2,
@@ -42,6 +70,8 @@ void SMPServer::run(tcp::iostream &conn,
 
 void SMPServer::setup(tcp::iostream &conn)
 {
+	setup_times.push_back(0.);
+	AutoTimer timer(&(setup_times.back()));
 	receive_context(conn, &context);
 	NTL::zz_p::init(context->zMStar.getP());
     ek = new FHEPubKey(*context);
@@ -55,6 +85,8 @@ void SMPServer::setup(tcp::iostream &conn)
 
 void SMPServer::process_columns()
 {
+	process_columns_times.push_back(0.);
+	AutoTimer timer(&(process_columns_times.back()));
 	const EncryptedArray *ea = context->ea;
     const long l = ea->size();
     const long d = ea->getDegree();
@@ -80,6 +112,8 @@ void SMPServer::process_columns()
 
 void SMPServer::receive_ctx(tcp::iostream &conn)
 {
+	receive_ctx_times.push_back(0.);
+	AutoTimer timer(&(receive_ctx_times.back()));
 	const EncryptedArray *ea = context->ea;
     const long l = ea->size();
     const long d = ea->getDegree();
@@ -95,7 +129,8 @@ void SMPServer::receive_ctx(tcp::iostream &conn)
 
 void SMPServer::evaluate()
 {
-	AutoTimer timer(&g_computation); // measure evaluation time
+	evaluate_times.push_back(0.);
+	AutoTimer timer(&(evaluate_times.back())); // measure evaluation time
 	const EncryptedArray *ea = context->ea;
     const long l = ea->size();
     const long d = ea->getDegree();
@@ -124,10 +159,13 @@ void SMPServer::evaluate()
 
 void SMPServer::response_ctx(tcp::iostream &conn)
 {
+	response_ctx_times.push_back(0.);
+	AutoTimer timer(&(response_ctx_times.back()));
 	int64_t ctx_cnt = results.size();
 	conn << ctx_cnt << std::endl;
 	for (auto const& ctx : results)
 		conn << ctx;
     /// sent the evalution time, just for statistics
-    conn << g_computation;
+    conn << evaluate_times.back();
+	conn.flush();
 }

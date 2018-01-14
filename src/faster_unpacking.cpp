@@ -1,6 +1,7 @@
 #include <HElib/FHE.h>
 #include <HElib/FHEContext.h>
 #include <HElib/NumbTh.h>
+#include <HElib/EncryptedArray.h>
 
 #include "CryptGMM/DoublePacking.hpp"
 #include "CryptGMM/Timer.hpp"

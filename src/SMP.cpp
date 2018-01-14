@@ -130,6 +130,7 @@ void play_client(tcp::iostream &conn,
         for (auto const& ctx : row)
             conn << ctx;
     }
+	conn.flush();
     clt_ben.ctx_sent = MAX_X1 * MAX_Y1;
 
     std::vector<GMMPrecompTable> tbls = precompute_gmm_tables(context);
@@ -307,17 +308,17 @@ int run_server(long port, long n1, long n2, long n3) {
     boost::asio::io_service ios;
     tcp::endpoint endpoint(tcp::v4(), port);
     tcp::acceptor acceptor(ios, endpoint);
-
+	SMPServer server;
     for (long run = 0; run < REPEAT; run++) {
         tcp::iostream conn;
         boost::system::error_code err;
         acceptor.accept(*conn.rdbuf(), err);
         if (!err) {
-			SMPServer server;
 			server.run(conn, n1, n2, n3);
             //play_server(conn, n1, n2, n3);
         }
     }
+	server.print_statistics();
     return 0;
 }
 
