@@ -108,7 +108,8 @@ void play_client(tcp::iostream &conn,
 	for (int x = 0; x < MAX_X1; x++) {
 		for (int k = 0; k < MAX_Y1; k++) {
 			internal::BlockId blk = {x, k};
-			double one_pack_time, one_enc_time;
+			double one_pack_time = 0.; 
+			double one_enc_time = 0.;
 			auto block = internal::partition(A, blk, ea, false);
 			{/// packing
 				AutoTimer timer(&one_pack_time);
@@ -132,6 +133,9 @@ void play_client(tcp::iostream &conn,
     }
 	conn.flush();
     clt_ben.ctx_sent = MAX_X1 * MAX_Y1;
+	/// we convert DoubleCRT to poly form when send ciphertexts through, and thus, we
+	/// count this cost as a part of encryption.
+	clt_ben.enc_times.back() += getTimerByName("TO_POLY_OUTPUT")->getTime() * 1000.;
 
     std::vector<GMMPrecompTable> tbls = precompute_gmm_tables(context);
     /// waiting results
@@ -161,7 +165,8 @@ void play_client(tcp::iostream &conn,
 	long ctx_idx = 0;
 	bool dec_pass = true;
 	for (const auto &ctx : ret_ctxs) {
-		double one_dec_time, one_unpack_time;
+		double one_dec_time = 0.; 
+		double one_unpack_time = 0.;
 		do {
 			AutoTimer timer(&one_dec_time);
 			dec_pass &= ctx.isCorrect();
@@ -180,6 +185,8 @@ void play_client(tcp::iostream &conn,
 		ctx_idx += 1;
         fill_compute(computed, row_blk, column, slots, ea);
     }
+	/// we convert poly to DoubleCRT when receiving ciphertexts.
+	decrypt_time += getTimerByName("FROM_POLY_OUTPUT")->getTime() * 1000.;
     clt_ben.dec_times.push_back(decrypt_time);
     clt_ben.unpack_times.push_back(unpack_time);
 	if (!::is_same(ground_truth, computed, NTL::zz_p::modulus()))
@@ -187,85 +194,6 @@ void play_client(tcp::iostream &conn,
 	if (!dec_pass)
 		std::cerr << "Decryption might fail" << std::endl;
 }
-
-// void play_server(tcp::iostream &conn,
-//                  const long n1,
-//                  const long n2,
-//                  const long n3) {
-//     auto context = receive_context(conn);
-//     NTL::zz_p::init(context.zMStar.getP());
-//     const EncryptedArray *ea = context.ea;
-//     const long l = ea->size();
-//     const long d = ea->getDegree();
-//     FHEPubKey ek(context);
-//     conn >> ek;
-//
-//     NTL::SetSeed(NTL::to_ZZ(123)); /// use same seed for debugging
-//     Matrix A, B, ground_truth;
-//     A.SetDims(n1, n2);
-//     B.SetDims(n2, n3);
-//     randomize(A, ek.getPtxtSpace());
-//     randomize(B, ek.getPtxtSpace());
-//     ground_truth = mul(A, B);
-//     const long MAX_X1 = round_div(A.NumRows(), l);
-//     const long MAX_Y1 = round_div(A.NumCols(), d);
-//
-//     Matrix Bt;
-// 	/// We compute A*B, but we use B tranpose.
-// 	/// This allow us to write one internal::partition()
-// 	/// for row-major case.
-//     transpose(&Bt, B);
-//     const long MAX_X2 = round_div(Bt.NumRows(), l);
-//     const long MAX_Y2 = round_div(Bt.NumCols(), d);
-// 	assert(MAX_Y1 == MAX_Y2);
-//     NTL::Mat<internal::PackedRows> plain_B_blk; // 2D-array of polynomials
-//     plain_B_blk.SetDims(MAX_X2, MAX_Y2);
-//     for (int y = 0; y < MAX_X2; y++) {
-//         for (int k = 0; k < MAX_Y2; k++) {
-//             internal::BlockId blk = {y, k};
-//             plain_B_blk[y][k] = internal::partition(Bt, blk, ea, true);
-//         }
-//     }
-//
-//     /// receving ciphertexts from the client
-//     std::vector<std::vector<Ctxt>> enc_A_blk;
-//     enc_A_blk.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, ek));
-//     for (int x = 0; x < MAX_X1; x++) {
-//         for (int k = 0; k < MAX_Y1; k++)
-//             conn >> enc_A_blk[x][k];
-//     }
-//
-//     /// compute the matrix mulitplication
-//     double computation{0.};
-// 	std::list<Ctxt> results;
-// 	do {
-// 		AutoTimer timer(&computation);
-// 		for (long A_blk_idx = 0; A_blk_idx < MAX_X1; A_blk_idx++) {
-// 			for (long col_B = 0; col_B < B.NumCols(); col_B++) {
-// 				long B_blk_idx = col_B / l;
-// 				long offset = col_B % l;
-// 				assert(B_blk_idx <= plain_B_blk.NumRows());
-// 				Ctxt summation(ek);
-// 				for (long prtn = 0; prtn < MAX_Y1; prtn++) {
-// 					Ctxt enc_blk(enc_A_blk.at(A_blk_idx).at(prtn));
-// 					NTL::ZZX plain_blk;
-// 					NTL::conv(plain_blk, plain_B_blk[B_blk_idx][prtn].polys.at(offset));
-// 					enc_blk.multByConstant(plain_blk);
-// 					summation += enc_blk;
-// 				}
-// 				summation.modDownToLevel(1);
-// 				results.push_back(summation);
-// 			}
-// 		}
-// 	} while (0);
-//
-// 	int64_t ctx_cnt = results.size();
-// 	conn << ctx_cnt << std::endl;
-// 	for (auto const& ctx : results)
-// 		conn << ctx;
-//     /// sent the evalution time, just for statistics
-//     conn << computation;
-// }
 
 int run_client(std::string const& addr, long port,
                long n1, long n2, long n3) {
@@ -300,6 +228,7 @@ int run_client(std::string const& addr, long port,
         } while(0);
         clt_ben.total_times.push_back(all_time);
         conn.close();
+		resetAllTimers(); // reset timers in HElib
     }
     return 1;
 }
@@ -317,7 +246,7 @@ int run_server(long port, long n1, long n2, long n3) {
         if (!err) {
 			SMPServer server;
 			server.run(conn, n1, n2, n3);
-            //play_server(conn, n1, n2, n3);
+			resetAllTimers(); // reset timers in HElib
         }
     }
 	SMPServer::print_statistics();
@@ -361,8 +290,6 @@ int main(int argc, char *argv[]) {
         time = mean_std(srv_ben.eval_times);
         printf("%.3f %.3f ", time.first, time.second);
         printf("%d %d\n", clt_ben.ctx_sent, clt_ben.ctx_recv);
-		printNamedTimer(std::cout, "TO_POLY_OUTPUT");
-		printNamedTimer(std::cout, "FROM_POLY_OUTPUT");
     } else {
 		argmap.usage("General Matrix Multiplication for |N*M| * |M*D|");
 		return -1;

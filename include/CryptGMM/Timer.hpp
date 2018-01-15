@@ -20,7 +20,7 @@ public:
 
 	~AutoTimer() {
 		if (ret_)
-			*ret_ = (Clock::now() - stamp_).count() / 1.0e6;
+			*ret_ += (Clock::now() - stamp_).count() / 1.0e6;
 	}
 
 protected:

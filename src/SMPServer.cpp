@@ -134,7 +134,7 @@ void SMPServer::receive_ctx(tcp::iostream &conn)
 
 void SMPServer::evaluate()
 {
-	evaluate_times.push_back(0.);
+	evaluate_times.push_back(getTimerByName("FROM_POLY_OUTPUT")->getTime() * 1000.);
 	AutoTimer timer(&(evaluate_times.back())); // measure evaluation time
 	const EncryptedArray *ea = context->ea;
     const long l = ea->size();
@@ -171,6 +171,7 @@ void SMPServer::response_ctx(tcp::iostream &conn)
 	for (auto const& ctx : results)
 		conn << ctx;
     /// sent the evalution time, just for statistics
+	evaluate_times.back() += getTimerByName("TO_POLY_OUTPUT")->getTime() * 1000.;
     conn << evaluate_times.back();
 	conn.flush();
 }
