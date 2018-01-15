@@ -8,7 +8,6 @@
 #include <HElib/NumbTh.h>
 
 //using boost::asio::ip::tcp;
-double g_computation;
 static void randomize(Matrix &mat, long p = 3) {
     for (long i = 0; i < mat.NumRows(); i++)
         for (long j = 0; j < mat.NumCols(); j++)
@@ -19,6 +18,12 @@ static long round_div(long a, long b) {
     return (a + b - 1) / b;
 }
 
+std::vector<double> SMPServer::setup_times;
+std::vector<double> SMPServer::process_columns_times;
+std::vector<double> SMPServer::receive_ctx_times;
+std::vector<double> SMPServer::evaluate_times;
+std::vector<double> SMPServer::response_ctx_times;
+
 SMPServer::~SMPServer() 
 {
 	if (context)
@@ -27,7 +32,7 @@ SMPServer::~SMPServer()
 		delete ek;
 }
 
-void SMPServer::print_statistics() const
+void SMPServer::print_statistics() 
 {
 	double total = 0.;
 	printf("setup process_columns receive_ctx evaluate response_ctx total\n");

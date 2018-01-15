@@ -22,22 +22,23 @@ public:
 			 const long n1,
 			 const long n2,
 			 const long n3);
-	void print_statistics() const;
+	static void print_statistics();
 
 protected:
-	std::vector<double> setup_times;
+	static std::vector<double> setup_times;
+	static std::vector<double> process_columns_times;
+	static std::vector<double> receive_ctx_times;
+	static std::vector<double> evaluate_times;
+	static std::vector<double> response_ctx_times;
+
 	void setup(tcp::iostream &conn);
 
-	std::vector<double> process_columns_times;
 	void process_columns();
 
-	std::vector<double> receive_ctx_times;
 	void receive_ctx(tcp::iostream &conn);
 
-	std::vector<double> evaluate_times;
 	void evaluate();
 
-	std::vector<double> response_ctx_times;
 	void response_ctx(tcp::iostream &conn);
 
 private:

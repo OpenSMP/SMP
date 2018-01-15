@@ -18,7 +18,7 @@
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
-constexpr int REPEAT = 2;
+constexpr int REPEAT = 10;
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -308,17 +308,19 @@ int run_server(long port, long n1, long n2, long n3) {
     boost::asio::io_service ios;
     tcp::endpoint endpoint(tcp::v4(), port);
     tcp::acceptor acceptor(ios, endpoint);
-	SMPServer server;
     for (long run = 0; run < REPEAT; run++) {
+
         tcp::iostream conn;
         boost::system::error_code err;
         acceptor.accept(*conn.rdbuf(), err);
+
         if (!err) {
+			SMPServer server;
 			server.run(conn, n1, n2, n3);
             //play_server(conn, n1, n2, n3);
         }
     }
-	server.print_statistics();
+	SMPServer::print_statistics();
     return 0;
 }
 
@@ -359,6 +361,8 @@ int main(int argc, char *argv[]) {
         time = mean_std(srv_ben.eval_times);
         printf("%.3f %.3f ", time.first, time.second);
         printf("%d %d\n", clt_ben.ctx_sent, clt_ben.ctx_recv);
+		printNamedTimer(std::cout, "TO_POLY_OUTPUT");
+		printNamedTimer(std::cout, "FROM_POLY_OUTPUT");
     } else {
 		argmap.usage("General Matrix Multiplication for |N*M| * |M*D|");
 		return -1;
