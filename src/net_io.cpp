@@ -1,4 +1,4 @@
-#include "CryptGMM/network/net_io.hpp"
+#include "SMP/network/net_io.hpp"
 #include <HElib/FHEContext.h>
 #include <iostream>
 void send_context(std::ostream &s, FHEcontext const& context)

@@ -39,8 +39,10 @@ void DoublePacking(long m, long slots) {
 			bool ok = true;
 			for (const auto& f : ftrs)
 				ok &= check(f);
-			if (ok)
+			if (ok) {
 				printf("%ld %ld\n", m, p);
+				break;
+			}
 		}
 		do {
             p = NTL::NextPrime(p + 2);
@@ -49,8 +51,13 @@ void DoublePacking(long m, long slots) {
 }
 
 int main() {
-    MiniONN(8192);
-	//DoublePacking(8192, 128);
+    //MiniONN(8192);
+	DoublePacking(8192 << 1, 256);
+	//DoublePacking(8192, 64);
+	// DoublePacking(8192, 256);
+	// DoublePacking(8192, 512);
+	// DoublePacking(8192, 1024);
+	// DoublePacking(8192, 2048);
     return 0;
 }
 

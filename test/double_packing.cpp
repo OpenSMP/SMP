@@ -3,8 +3,8 @@
 #include <HElib/FHEContext.h>
 #include <HElib/EncryptedArray.h>
 
-#include "CryptGMM/DoublePacking.hpp"
-#include "CryptGMM/Matrix.hpp"
+#include "SMP/DoublePacking.hpp"
+#include "SMP/Matrix.hpp"
 namespace testing
 {
  namespace internal

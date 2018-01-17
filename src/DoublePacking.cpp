@@ -1,5 +1,5 @@
-#include "CryptGMM/Matrix.hpp"
-#include "CryptGMM/DoublePacking.hpp"
+#include "SMP/Matrix.hpp"
+#include "SMP/DoublePacking.hpp"
 #include "HElib/EncryptedArray.h"
 namespace internal 
 {

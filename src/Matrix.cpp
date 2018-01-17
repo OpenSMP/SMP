@@ -1,8 +1,8 @@
 //
 // Created by Lu WJ on 5/7/2017 AD.
 //
-#include "CryptGMM/Matrix.hpp"
-#include "CryptGMM/literal.hpp"
+#include "SMP/Matrix.hpp"
+#include "SMP/literal.hpp"
 
 #include <NTL/ZZ.h>
 #include <iostream>

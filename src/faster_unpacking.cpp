@@ -3,9 +3,9 @@
 #include <HElib/NumbTh.h>
 #include <HElib/EncryptedArray.h>
 
-#include "CryptGMM/DoublePacking.hpp"
-#include "CryptGMM/Timer.hpp"
-#include "CryptGMM/HElib.hpp"
+#include "SMP/DoublePacking.hpp"
+#include "SMP/Timer.hpp"
+#include "SMP/HElib.hpp"
 
 #include <iostream>
 #include <vector>

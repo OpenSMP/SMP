@@ -3,9 +3,9 @@
 #include <HElib/EncryptedArray.h>
 #include <HElib/PAlgebra.h>
 #include <NTL/ZZX.h>
-#include "CryptGMM/Timer.hpp"
-#include "CryptGMM/literal.hpp"
-#include "CryptGMM/HElib.hpp"
+#include "SMP/Timer.hpp"
+#include "SMP/literal.hpp"
+#include "SMP/HElib.hpp"
 bool check(std::vector<ZZX> const& factors, long d) {
     std::cout << "factors: \n";
     for (auto const &f : factors) {

@@ -1,4 +1,4 @@
-#include "CryptGMM/HElib.hpp"
+#include "SMP/HElib.hpp"
 #include <HElib/FHEContext.h>
 #include <HElib/EncryptedArray.h>
 #include <HElib/PAlgebra.h>

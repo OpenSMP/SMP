@@ -3,8 +3,8 @@
 #include <HElib/EncryptedArray.h>
 #include <HElib/Ctxt.h>
 
-#include "CryptGMM/Matrix.hpp"
-#include "CryptGMM/DoublePacking.hpp"
+#include "SMP/Matrix.hpp"
+#include "SMP/DoublePacking.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>

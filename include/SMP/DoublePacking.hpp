@@ -4,7 +4,7 @@
 
 #ifndef CRYPTGMM_DOUBLEPACKING_HPP
 #define CRYPTGMM_DOUBLEPACKING_HPP
-#include "CryptGMM/Matrix.hpp"
+#include "SMP/Matrix.hpp"
 #include "NTL/ZZX.h"
 #include <vector>
 

@@ -4,9 +4,9 @@
 #include <HElib/EncryptedArray.h>
 #include <HElib/NumbTh.h>
 
-#include "CryptGMM/DoublePacking.hpp"
-#include "CryptGMM/Matrix.hpp"
-#include "CryptGMM/Timer.hpp"
+#include "SMP/DoublePacking.hpp"
+#include "SMP/Matrix.hpp"
+#include "SMP/Timer.hpp"
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <iostream>

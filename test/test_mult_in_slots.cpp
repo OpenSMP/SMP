@@ -4,7 +4,7 @@
 #include <HElib/PAlgebra.h>
 #include <NTL/ZZX.h>
 
-#include "CryptGMM/HElib.hpp"
+#include "SMP/HElib.hpp"
 long inner_product(NTL::zz_pX const& a, 
                    NTL::zz_pX const& b) 
 {

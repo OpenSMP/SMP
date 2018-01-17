@@ -1,7 +1,7 @@
-#include "CryptGMM/SMPServer.hpp"
-#include "CryptGMM/network/net_io.hpp"
-#include "CryptGMM/Timer.hpp"
-#include "CryptGMM/literal.hpp"
+#include "SMP/SMPServer.hpp"
+#include "SMP/network/net_io.hpp"
+#include "SMP/Timer.hpp"
+#include "SMP/literal.hpp"
 
 #include <HElib/FHE.h>
 #include <HElib/FHEContext.h>

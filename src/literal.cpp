@@ -1,4 +1,4 @@
-#include "CryptGMM/literal.hpp"
+#include "SMP/literal.hpp"
 #include <sstream>
 #include <iterator>
 #include <cmath>

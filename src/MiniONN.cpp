@@ -3,10 +3,10 @@
 #include <HElib/EncryptedArray.h>
 #include <HElib/NumbTh.h>
 
-#include "CryptGMM/Matrix.hpp"
-#include "CryptGMM/Timer.hpp"
-#include "CryptGMM/literal.hpp"
-#include "CryptGMM/network/net_io.hpp"
+#include "SMP/Matrix.hpp"
+#include "SMP/Timer.hpp"
+#include "SMP/literal.hpp"
+#include "SMP/network/net_io.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
