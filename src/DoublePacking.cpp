@@ -38,6 +38,9 @@ PackedRows partition(Matrix const& matrix, BlockId const& blk,
             NTL::SetCoeff(ret.polys[offset], coeff, matrix[row][col]);
         }
     }
+	if (matrix.NumRows() == 1) { // a special case 
+		ret.polys.assign(l, ret.polys.front()); // copy the first with l copies.
+	}
     return ret;
 }
 } // namespace internal

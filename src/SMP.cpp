@@ -44,14 +44,24 @@ void fill_compute(Matrix& mat,
 {
     const long l = ea->size();
     assert(inner_prod.size() == l);
-	const long row_start = row_blk * l;
+	const bool is_vec = mat.NumRows() == 1;
+	const long row_start = is_vec ? 0 : row_blk * l;
+	const long col_start = is_vec ? row_blk * l : col;
+
     for (long ll = 0; ll < l; ll++) {
         long computed = inner_prod[ll];
-        long row = row_start + ll;
-		if (row < mat.NumRows()) {
-			mat.put(row, col, computed);
+		if (!is_vec) {
+			long row = row_start + ll;
+			if (row < mat.NumRows())
+				mat.put(row, col, computed);
+			else
+				break;
 		} else {
-			break;
+			long col = col_start + ll;
+			if (col < mat.NumCols())
+				mat.put(0, col, computed);
+			else
+				break;
 		}
     }
 }
@@ -197,7 +207,7 @@ void play_client(tcp::iostream &conn,
 int run_client(std::string const& addr, long port,
                long n1, long n2, long n3) {
     const long m = 8192;
-    const long p = 70913;
+    const long p = 84961;//70913;
     const long r = 1;
     const long L = 2;
     NTL::zz_p::init(p);

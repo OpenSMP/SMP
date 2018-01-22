@@ -39,6 +39,8 @@ protected:
 
 	void evaluate();
 
+	void evaluate_mat_vec();
+
 	void response_ctx(tcp::iostream &conn);
 
 private:
@@ -49,6 +51,7 @@ private:
 	FHEPubKey *ek = nullptr;
 	std::vector<std::vector<Ctxt>> enc_A_blk;
 	NTL::Mat<internal::PackedRows> plain_B_blk;
+	NTL::Mat<NTL::ZZX> encoded_plain_B_blk;
 	std::list<Ctxt> results;
 };
 #endif // CRYPT_GMM_SMP_SERVER_HPP

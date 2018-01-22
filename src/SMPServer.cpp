@@ -2,6 +2,7 @@
 #include "SMP/network/net_io.hpp"
 #include "SMP/Timer.hpp"
 #include "SMP/literal.hpp"
+#include "SMP/HElib.hpp"
 
 #include <HElib/FHE.h>
 #include <HElib/FHEContext.h>
@@ -95,6 +96,7 @@ void SMPServer::process_columns()
 	const EncryptedArray *ea = context->ea;
     const long l = ea->size();
     const long d = ea->getDegree();
+	const bool is_vec = A.NumRows() == 1;
 
 	Matrix Bt;
 	/// We compute A*B, but we use B tranpose.
@@ -107,10 +109,17 @@ void SMPServer::process_columns()
 	assert(MAX_Y1 == MAX_Y2);
 
     plain_B_blk.SetDims(MAX_X2, MAX_Y2);
+    encoded_plain_B_blk.SetDims(MAX_X2, MAX_Y2);
     for (int y = 0; y < MAX_X2; y++) {
         for (int k = 0; k < MAX_Y2; k++) {
             internal::BlockId blk = {y, k};
             plain_B_blk[y][k] = internal::partition(Bt, blk, ea, true);
+			if (is_vec) {
+				// NTL::zz_pX encoded;
+				rawEncode(encoded_plain_B_blk[y][k],
+						  plain_B_blk[y][k].polys, *context);
+				// NTL::conv(, encoded);
+			}
         }
     }
 }
@@ -132,6 +141,28 @@ void SMPServer::receive_ctx(tcp::iostream &conn)
     }
 }
 
+void SMPServer::evaluate_mat_vec()
+{
+	const EncryptedArray *ea = context->ea;
+	const long l = ea->size();
+    const long d = ea->getDegree();
+	assert(A.NumRows() == 1);
+    const long MAX_Y1 = round_div(A.NumCols(), d);
+
+	for (long col_B = 0; col_B < B.NumCols(); col_B += l) {
+		long B_blk_idx = col_B / l;
+		assert(B_blk_idx <= plain_B_blk.NumRows());
+		Ctxt summation(*ek);
+		for (long prtn = 0; prtn < MAX_Y1; prtn++) {
+			Ctxt enc_blk(enc_A_blk.at(0).at(prtn));
+			enc_blk.multByConstant(encoded_plain_B_blk[B_blk_idx][prtn]);
+			summation += enc_blk;
+		}
+		summation.modDownToLevel(1);
+		results.push_back(summation);
+	}
+}
+
 void SMPServer::evaluate()
 {
 	evaluate_times.push_back(getTimerByName("FROM_POLY_OUTPUT")->getTime() * 1000.);
@@ -141,23 +172,26 @@ void SMPServer::evaluate()
     const long d = ea->getDegree();
 	const long MAX_X1 = round_div(A.NumRows(), l);
     const long MAX_Y1 = round_div(A.NumCols(), d);
-
-
-	for (long A_blk_idx = 0; A_blk_idx < MAX_X1; A_blk_idx++) {
-		for (long col_B = 0; col_B < B.NumCols(); col_B++) {
-			long B_blk_idx = col_B / l;
-			long offset = col_B % l;
-			assert(B_blk_idx <= plain_B_blk.NumRows());
-			Ctxt summation(*ek);
-			for (long prtn = 0; prtn < MAX_Y1; prtn++) {
-				Ctxt enc_blk(enc_A_blk.at(A_blk_idx).at(prtn));
-				NTL::ZZX plain_blk;
-				NTL::conv(plain_blk, plain_B_blk[B_blk_idx][prtn].polys.at(offset));
-				enc_blk.multByConstant(plain_blk);
-				summation += enc_blk;
+	const bool is_vec = A.NumRows() == 1;
+	if (is_vec) {
+		evaluate_mat_vec();
+	} else {
+		for (long A_blk_idx = 0; A_blk_idx < MAX_X1; A_blk_idx++) {
+			for (long col_B = 0; col_B < B.NumCols(); col_B++) {
+				long B_blk_idx = col_B / l;
+				long offset = col_B % l;
+				assert(B_blk_idx <= plain_B_blk.NumRows());
+				Ctxt summation(*ek);
+				for (long prtn = 0; prtn < MAX_Y1; prtn++) {
+					Ctxt enc_blk(enc_A_blk.at(A_blk_idx).at(prtn));
+					NTL::ZZX plain_blk;
+					NTL::conv(plain_blk, plain_B_blk[B_blk_idx][prtn].polys.at(offset));
+					enc_blk.multByConstant(plain_blk);
+					summation += enc_blk;
+				}
+				summation.modDownToLevel(1);
+				results.push_back(summation);
 			}
-			summation.modDownToLevel(1);
-			results.push_back(summation);
 		}
 	}
 }
@@ -172,6 +206,6 @@ void SMPServer::response_ctx(tcp::iostream &conn)
 		conn << ctx;
     /// sent the evalution time, just for statistics
 	evaluate_times.back() += getTimerByName("TO_POLY_OUTPUT")->getTime() * 1000.;
-    conn << evaluate_times.back();
+    conn << evaluate_times.back() + process_columns_times.back();
 	conn.flush();
 }

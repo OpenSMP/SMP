@@ -9,8 +9,8 @@
 
 #include <iostream>
 #include <vector>
-void randomize(NTL::ZZX &poly, long p = 3) {
-	for (long d = 0; d < NTL::deg(poly); d)
+void randomize(NTL::ZZX &poly, long phim, long p = 3) {
+	for (long d = 0; d < phim; d++)
 		NTL::SetCoeff(poly, d, NTL::RandomBnd(p));
 }
 
@@ -28,15 +28,9 @@ double faster_version(std::vector<long> &slots,
 	extract_inner_products(slots, poly, tbls, context);
 }
 
-int main(int argc, char *argv[]) {
-	long m = 8192;
-    long p = 70913;
+int run(long m, long p) {
     const long r = 1;
     const long L = 2;
-	ArgMapping argmap;
-	argmap.arg("m", m, "m");
-	argmap.arg("p", p, "p");
-	argmap.parse(argc, argv);
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
     context.bitsPerLevel = 60;
@@ -47,7 +41,7 @@ int main(int argc, char *argv[]) {
 
 	NTL::ZZX rnd;
 	rnd.SetLength(context.zMStar.getPhiM());
-	randomize(rnd, p);
+	randomize(rnd, (m >> 1), p);
 	double pre_time = 0.;
 	std::vector<GMMPrecompTable> tbls;
 	{
@@ -56,9 +50,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	std::vector<long> slots;
+	const long T = 2;
 	double faster_time = 0.;
-	for (long i = 0; i < 10000; i++) {
-		double _t;
+	for (long i = 0; i < T; i++) {
+		double _t = 0.;
 		{
 			AutoTimer timer(&_t);
 			faster_version(slots, rnd, tbls, context);
@@ -68,15 +63,20 @@ int main(int argc, char *argv[]) {
 
 	std::vector<NTL::zz_pX> _slots;
 	double slower_time = 0.;
-	for (long i = 0; i < 10000; i++) {
-		double _t;
+	for (long i = 0; i < T; i++) {
+		double _t = 0.;
 		{
 			AutoTimer timer(&_t);
 			slower_version(_slots, rnd, context);
 		}
 		slower_time += _t;
 	}
-	printf("%.3f + %.3f/per <-> %.3f/per\n", 
-		   pre_time, faster_time, slower_time);		
+	printf("%.3f + %.3f/per <-> %.3f/per\n", pre_time, faster_time / T, slower_time / T);
+	return 0;
+}
+
+int main() {
+	for (long p : {84961, 82241, 82561, 70913, 84481, 87041})
+		run(8192, p);
 	return 0;
 }
