@@ -218,7 +218,7 @@ int run_client(std::string const& addr, long port,
         }
 
         /// send FHEcontext obj
-        double all_time;
+        double all_time = 0.;
         do {
             send_context(conn, context);
             AutoTimer time(&all_time);
