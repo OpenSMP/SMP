@@ -41,7 +41,8 @@
 #include "dgk.h"
 #include <vector>
 #include <cstdlib>
-
+int64_t NetworkLog::bytes_sent = 0;
+int64_t NetworkLog::bytes_recev = 0;
 
 static void send_big_int(std::vector<uint32_t> const& arr, 
 						 std::iostream &conn,
@@ -71,6 +72,7 @@ void send_mpz(const mpz_t v,
     size_t bytes = 0;
     mpz_export((void *)buf.data(), &bytes, 1, sizeof(char), 0, 0, v);
     send_big_int(buf, conn, bytes);
+	NetworkLog::bytes_sent += bytes;
 }
 
 void receive_mpz(mpz_t v,
@@ -80,6 +82,7 @@ void receive_mpz(mpz_t v,
 	int32_t bytes;
     receive_big_int(buf, bytes, conn);
     mpz_import(v, bytes, 1, sizeof(char), 0, 0, (void *)buf.data());
+	NetworkLog::bytes_recev += bytes;
 }
 
 void send_pk(dgk_pubkey_t const*pk, std::vector<uint32_t> &buf, std::iostream &conn)
@@ -106,6 +109,23 @@ void receive_pk(dgk_pubkey_t *pk, std::vector<uint32_t> &buf, std::iostream &con
 	receive_mpz(pk->u, buf, conn);
 	receive_mpz(pk->g, buf, conn);
 	receive_mpz(pk->h, buf, conn);
+}
+
+void dgk_hom_add(mpz_t dst, mpz_t ctx_1, mpz_t ctx_2, dgk_pubkey_t const* pk)
+{
+	mpz_mul(dst, ctx_1, ctx_2); 
+	mpz_mod(dst, dst, pk->n); 
+}
+/**
+ *  Mult plain with the ciphertext
+ */
+void dgk_hom_mult(mpz_t dst, mpz_t ctx, long c, dgk_pubkey_t const* pk)
+{
+	mpz_t cc;
+	mpz_init(cc);
+	mpz_set_ui(cc, c);
+	mpz_powm(dst, ctx, cc, pk->n);
+	mpz_clear(cc);
 }
 
 #define DGK_CHECKSIZE 0

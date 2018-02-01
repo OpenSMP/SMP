@@ -106,6 +106,14 @@ void dgk_encrypt_plain(mpz_t res, dgk_pubkey_t const* pub, mpz_t pt, gmp_randsta
 void dgk_encrypt_crt(mpz_t res, dgk_pubkey_t* pub, dgk_prvkey_t* prv, mpz_t pt, gmp_randstate_t rnd);
 
 /**
+ *  Add two ciphtexts
+ */
+void dgk_hom_add(mpz_t dst, mpz_t ctx_a, mpz_t ctx_b, dgk_pubkey_t const* pk);
+/**
+ *  Mult plain with the ciphertext
+ */
+void dgk_hom_mult(mpz_t dst, mpz_t ctx, long c, dgk_pubkey_t const* pk);
+/**
  * use CRT and double base combined - unfortunately not efficient due to different sized exponents, therefore deactivated
  */
 // void dgk_encrypt_crt_db(mpz_t res, dgk_pubkey_t* pub, dgk_prvkey_t* prv, mpz_t pt, gmp_randstate_t rnd);
@@ -136,6 +144,12 @@ void dgk_freeprvkey(dgk_prvkey_t* prv);
  * create the full public key struct type given only n, g and h (e.g. after key exchange)
  */
 void dgk_complete_pubkey(unsigned int modulusbits, unsigned int lbits, dgk_pubkey_t** pub, mpz_t n, mpz_t g, mpz_t h);
+
+class NetworkLog {
+public:
+	static int64_t bytes_sent;
+	static int64_t bytes_recev;
+};
 
 void send_mpz(const mpz_t v, std::vector<uint32_t> &buf, std::iostream &conn);
 void receive_mpz(mpz_t v, std::vector<uint32_t> &buf, std::iostream &conn);
