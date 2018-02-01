@@ -200,10 +200,10 @@ void play_server(std::iostream &conn, long n1, long n2, long n3)
 
     EncMatrix enc_A(n1 * n2);
 	for (long r = 0; r < n1; r++) {
-		long offset = r * n1;
+		long offset = r * n2;
 		for (long c = 0; c < n2; c++) {
-			mpz_init(enc_A[offset + c]);
-			receive_mpz(enc_A.at(offset + c), buffer, conn);
+			mpz_init(enc_A.at(offset + c));
+			receive_mpz(enc_A[offset + c], buffer, conn);
 		}
 	}
 	
@@ -219,7 +219,7 @@ void play_server(std::iostream &conn, long n1, long n2, long n3)
 			mpz_init(res);
 			dgk_encrypt_plain(res, &pk, zero, gmp_rand);
 			for (long k = 0; k < n2; k++) {
-				dgk_hom_mult(tmp, enc_A[offset + k], B[k][c], &pk);
+				dgk_hom_mult(tmp, enc_A.at(offset + k), B[k][c], &pk);
 				dgk_hom_add(res, res, tmp, &pk);
 			}
 			send_mpz(res, buffer, conn);
