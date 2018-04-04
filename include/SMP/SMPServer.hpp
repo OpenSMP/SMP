@@ -9,12 +9,14 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <vector>
+#include <atomic>
+#include <thread>
 #include <list>
 class FHEcontext;
 using boost::asio::ip::tcp;
 class SMPServer {
 public:
-	SMPServer() {}
+	SMPServer();
 
 	~SMPServer();
 
@@ -46,6 +48,10 @@ protected:
 private:
 	Matrix A, B;
 	Matrix ground_truth;
+
+    std::atomic<int> ctx_sent, ctx_received;
+    std::atomic<bool> kill_signal;
+    std::thread network_watcher;
 
 	FHEcontext *context = nullptr;
 	FHEPubKey *ek = nullptr;

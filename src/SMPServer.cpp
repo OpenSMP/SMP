@@ -25,6 +25,12 @@ std::vector<double> SMPServer::receive_ctx_times;
 std::vector<double> SMPServer::evaluate_times;
 std::vector<double> SMPServer::response_ctx_times;
 
+SMPServer::SMPServer() 
+    : ctx_sent(0), 
+    ctx_received(0), 
+    kill_signal(false) {
+}
+
 SMPServer::~SMPServer() 
 {
 	if (context)
@@ -65,6 +71,13 @@ void SMPServer::run(tcp::iostream &conn,
 					const long n2,
 					const long n3) 
 {
+    auto wather_program = [this]() {
+        while (!kill_signal.load()) {
+            std::cout << ctx_sent.load() + ctx_received.load() << " ";
+            usleep(100000); // 100ms
+        }
+    };
+    network_watcher = std::thread(wather_program);
 	A.SetDims(n1, n2);
 	B.SetDims(n2, n3);
 	setup(conn);
@@ -72,6 +85,8 @@ void SMPServer::run(tcp::iostream &conn,
 	receive_ctx(conn);
 	evaluate();
 	response_ctx(conn);
+    kill_signal.store(true);
+    network_watcher.join();
 }
 
 void SMPServer::setup(tcp::iostream &conn)
