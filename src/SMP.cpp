@@ -17,7 +17,8 @@
 #include <numeric>
 #include <list>
 using boost::asio::ip::tcp;
-constexpr int REPEAT = 10;
+constexpr int REPEAT = 1;
+std::atomic<int> global_counter(0);
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -117,7 +118,7 @@ void play_client(tcp::iostream &conn,
 	for (int x = 0; x < MAX_X1; x++) {
 		for (int k = 0; k < MAX_Y1; k++) {
 			internal::BlockId blk = {x, k};
-			double one_pack_time = 0.; 
+			double one_pack_time = 0.;
 			double one_enc_time = 0.;
 			auto block = internal::partition(A, blk, ea, false);
 			{/// packing
@@ -137,8 +138,10 @@ void play_client(tcp::iostream &conn,
 
     /// send ciphertexts of matrix
     for (auto const& row : uploading) {
-        for (auto const& ctx : row)
+        for (auto const& ctx : row) {
             conn << ctx;
+            //_ctx_sent++;
+        }
     }
 	conn.flush();
     clt_ben.ctx_sent = MAX_X1 * MAX_Y1;
@@ -154,8 +157,10 @@ void play_client(tcp::iostream &conn,
 	conn >> ctx_cnt;
     clt_ben.ctx_recv = ctx_cnt;
     std::vector<Ctxt> ret_ctxs(ctx_cnt, ek);
-	for (size_t k = 0; k < ctx_cnt; k++)
+	for (size_t k = 0; k < ctx_cnt; k++) {
 		conn >> ret_ctxs.at(k);
+        //_ctx_received++;
+    }
     double eval_time = 0.;
     conn >> eval_time;
     srv_ben.eval_times.push_back(eval_time);
@@ -174,7 +179,7 @@ void play_client(tcp::iostream &conn,
 	long ctx_idx = 0;
 	bool dec_pass = true;
 	for (const auto &ctx : ret_ctxs) {
-		double one_dec_time = 0.; 
+		double one_dec_time = 0.;
 		double one_unpack_time = 0.;
 		do {
 			AutoTimer timer(&one_dec_time);
@@ -202,25 +207,24 @@ void play_client(tcp::iostream &conn,
 		std::cerr << "The computation seems wrong " << std::endl;
 	if (!dec_pass)
 		std::cerr << "Decryption might fail" << std::endl;
+    global_counter++;
 }
 
 int run_client(std::string const& addr, long port,
                long n1, long n2, long n3) {
     const long m = 8192;
-    const long p = 84961;//70913;
+    const long p = 70913;
     const long r = 1;
     const long L = 2;
     NTL::zz_p::init(p);
     FHEcontext context(m, p, r);
     context.bitsPerLevel = 60;
     buildModChain(context, L);
-    std::cerr << "kappa = " << context.securityLevel() << std::endl;
-    std::cerr << "slot = " << context.ea->size() << std::endl;
-    std::cerr << "degree = " << context.ea->getDegree() << std::endl;
     FHESecKey sk(context);
     sk.GenSecKey(64);
-
-    for (long t = 0; t < REPEAT; t++) {
+    auto start_time_stamp = std::clock();
+    int done = 0;
+    while (true) {
         tcp::iostream conn(addr, std::to_string(port));
         if (!conn) {
             std::cerr << "Can not connect to server!" << std::endl;
@@ -232,14 +236,22 @@ int run_client(std::string const& addr, long port,
         do {
             send_context(conn, context);
             AutoTimer time(&all_time);
-            /// send the evaluation key
+            // send the evaluation key
             play_client(conn, sk, context, n1, n2, n3);
         } while(0);
         clt_ben.total_times.push_back(all_time);
         conn.close();
 		resetAllTimers(); // reset timers in HElib
+
+        ++done;
+        auto now_time = std::clock();
+        if (now_time - start_time_stamp > 3600 * CLOCKS_PER_SEC) {
+            /// one hour
+            break;
+        }
     }
-    return 1;
+    std::cout << "one hour finished: " << done << "\n";
+    return 0;
 }
 
 int run_server(long port, long n1, long n2, long n3) {
@@ -247,7 +259,6 @@ int run_server(long port, long n1, long n2, long n3) {
     tcp::endpoint endpoint(tcp::v4(), port);
     tcp::acceptor acceptor(ios, endpoint);
     for (long run = 0; run < REPEAT; run++) {
-
         tcp::iostream conn;
         boost::system::error_code err;
         acceptor.accept(*conn.rdbuf(), err);
@@ -281,24 +292,6 @@ int main(int argc, char *argv[]) {
         run_server(port, n1, n2, n3);
     } else if (role == 1) {
         run_client(addr, port, n1, n2, n3);
-        auto time = mean_std(clt_ben.pack_times);
-        printf("%.3f %.3f ", time.first, time.second);
-
-        time = mean_std(clt_ben.enc_times);
-        printf("%.3f %.3f ", time.first, time.second);
-
-        time = mean_std(clt_ben.dec_times);
-        printf("%.3f %.3f ", time.first, time.second);
-
-        time = mean_std(clt_ben.unpack_times);
-        printf("%.3f %.3f ", time.first, time.second);
-
-        time = mean_std(clt_ben.total_times);
-        printf("%.3f %.3f ", time.first, time.second);
-
-        time = mean_std(srv_ben.eval_times);
-        printf("%.3f %.3f ", time.first, time.second);
-        printf("%d %d\n", clt_ben.ctx_sent, clt_ben.ctx_recv);
     } else {
 		argmap.usage("General Matrix Multiplication for |N*M| * |M*D|");
 		return -1;
