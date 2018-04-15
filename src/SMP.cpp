@@ -223,6 +223,7 @@ int run_client(std::string const& addr, long port,
     FHESecKey sk(context);
     sk.GenSecKey(64);
     auto start_time_stamp = std::clock();
+    auto last_time_stamp = std::clock();
     int done = 0;
     while (true) {
         tcp::iostream conn(addr, std::to_string(port));
@@ -245,7 +246,12 @@ int run_client(std::string const& addr, long port,
 
         ++done;
         auto now_time = std::clock();
-        if (now_time - start_time_stamp > 3600 * CLOCKS_PER_SEC) {
+        if (now_time - last_time_stamp >= 60 * CLOCKS_PER_SEC) {
+            std::cout << done << "\n";
+            last_time_stamp = now_time;
+        }
+
+        if (now_time - start_time_stamp >= 3600 * CLOCKS_PER_SEC) {
             /// one hour
             break;
         }
