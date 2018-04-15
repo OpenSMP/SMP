@@ -73,14 +73,16 @@ void SMPServer::run(tcp::iostream &conn,
 {
     auto wather_program = [this]() {
         while (!kill_signal.load()) {
-            std::cout << ctx_sent.load() + ctx_received.load() << " ";
+            std::cout << ctx_sent.load() + ctx_received.load() << "\n";
             usleep(100000); // 100ms
         }
     };
-    network_watcher = std::thread(wather_program);
 	A.SetDims(n1, n2);
 	B.SetDims(n2, n3);
 	setup(conn);
+    ctx_sent.load(0);
+    ctx_received.load(0);
+    network_watcher = std::thread(wather_program);
 	process_columns();
 	receive_ctx(conn);
 	evaluate();
@@ -151,8 +153,10 @@ void SMPServer::receive_ctx(tcp::iostream &conn)
 
 	enc_A_blk.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, *ek));
     for (int x = 0; x < MAX_X1; x++) {
-        for (int k = 0; k < MAX_Y1; k++)
+        for (int k = 0; k < MAX_Y1; k++) {
             conn >> enc_A_blk[x][k];
+            ctx_received++;
+        }
     }
 }
 
@@ -217,8 +221,10 @@ void SMPServer::response_ctx(tcp::iostream &conn)
 	AutoTimer timer(&(response_ctx_times.back()));
 	int64_t ctx_cnt = results.size();
 	conn << ctx_cnt << std::endl;
-	for (auto const& ctx : results)
+	for (auto const& ctx : results) {
 		conn << ctx;
+        ctx_sent++;
+    }
     /// sent the evalution time, just for statistics
 	evaluate_times.back() += getTimerByName("TO_POLY_OUTPUT")->getTime() * 1000.;
     conn << evaluate_times.back() + process_columns_times.back();
