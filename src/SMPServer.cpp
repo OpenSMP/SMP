@@ -19,16 +19,13 @@ static long round_div(long a, long b) {
     return (a + b - 1) / b;
 }
 
-std::vector<double> SMPServer::setup_times;
-std::vector<double> SMPServer::process_columns_times;
-std::vector<double> SMPServer::receive_ctx_times;
-std::vector<double> SMPServer::evaluate_times;
-std::vector<double> SMPServer::response_ctx_times;
+//std::vector<double> SMPServer::setup_times;
+//std::vector<double> SMPServer::process_columns_times;
+//std::vector<double> SMPServer::receive_ctx_times;
+//std::vector<double> SMPServer::evaluate_times;
+//std::vector<double> SMPServer::response_ctx_times;
 
-SMPServer::SMPServer() 
-    : ctx_sent(0), 
-    ctx_received(0), 
-    kill_signal(false) {
+SMPServer::SMPServer() {
 }
 
 SMPServer::~SMPServer() 
@@ -41,29 +38,29 @@ SMPServer::~SMPServer()
 
 void SMPServer::print_statistics() 
 {
-	double total = 0.;
-	printf("setup process_columns receive_ctx evaluate response_ctx total\n");
-	auto time = mean_std(setup_times);
-	printf("%.3f ", time.first);
-	total += time.first;
+	//double total = 0.;
+	//printf("setup process_columns receive_ctx evaluate response_ctx total\n");
+	//auto time = mean_std(setup_times);
+	//printf("%.3f ", time.first);
+	//total += time.first;
 
-	time = mean_std(process_columns_times);
-	printf("%.3f ", time.first);
-	total += time.first;
+	//time = mean_std(process_columns_times);
+	//printf("%.3f ", time.first);
+	//total += time.first;
 
-	time = mean_std(receive_ctx_times);
-	printf("%.3f ", time.first);
-	total += time.first;
+	//time = mean_std(receive_ctx_times);
+	//printf("%.3f ", time.first);
+	//total += time.first;
 
-	time = mean_std(evaluate_times);
-	printf("%.3f ", time.first);
-	total += time.first;
+	//time = mean_std(evaluate_times);
+	//printf("%.3f ", time.first);
+	//total += time.first;
 
-	time = mean_std(response_ctx_times);
-	printf("%.3f ", time.first);
-	total += time.first;
-	
-	printf(": %.3f\n", total);
+	//time = mean_std(response_ctx_times);
+	//printf("%.3f ", time.first);
+	//total += time.first;
+	//
+	//printf(": %.3f\n", total);
 }
 
 void SMPServer::run(tcp::iostream &conn, 
@@ -71,30 +68,19 @@ void SMPServer::run(tcp::iostream &conn,
 					const long n2,
 					const long n3) 
 {
-    auto wather_program = [this]() {
-        while (!kill_signal.load()) {
-            std::cout << ctx_sent.load() + ctx_received.load() << "\n";
-            usleep(100000); // 100ms
-        }
-    };
 	A.SetDims(n1, n2);
 	B.SetDims(n2, n3);
 	setup(conn);
-    ctx_sent.load(0);
-    ctx_received.load(0);
-    network_watcher = std::thread(wather_program);
 	process_columns();
 	receive_ctx(conn);
 	evaluate();
 	response_ctx(conn);
-    kill_signal.store(true);
-    network_watcher.join();
 }
 
 void SMPServer::setup(tcp::iostream &conn)
 {
-	setup_times.push_back(0.);
-	AutoTimer timer(&(setup_times.back()));
+	//setup_times.push_back(0.);
+	//AutoTimer timer(&(setup_times.back()));
 	receive_context(conn, &context);
 	NTL::zz_p::init(context->zMStar.getP());
     ek = new FHEPubKey(*context);
@@ -108,8 +94,8 @@ void SMPServer::setup(tcp::iostream &conn)
 
 void SMPServer::process_columns()
 {
-	process_columns_times.push_back(0.);
-	AutoTimer timer(&(process_columns_times.back()));
+	//process_columns_times.push_back(0.);
+	//AutoTimer timer(&(process_columns_times.back()));
 	const EncryptedArray *ea = context->ea;
     const long l = ea->size();
     const long d = ea->getDegree();
@@ -143,8 +129,8 @@ void SMPServer::process_columns()
 
 void SMPServer::receive_ctx(tcp::iostream &conn)
 {
-	receive_ctx_times.push_back(0.);
-	AutoTimer timer(&(receive_ctx_times.back()));
+	//receive_ctx_times.push_back(0.);
+	//AutoTimer timer(&(receive_ctx_times.back()));
 	const EncryptedArray *ea = context->ea;
     const long l = ea->size();
     const long d = ea->getDegree();
@@ -155,7 +141,6 @@ void SMPServer::receive_ctx(tcp::iostream &conn)
     for (int x = 0; x < MAX_X1; x++) {
         for (int k = 0; k < MAX_Y1; k++) {
             conn >> enc_A_blk[x][k];
-            ctx_received++;
         }
     }
 }
@@ -184,8 +169,8 @@ void SMPServer::evaluate_mat_vec()
 
 void SMPServer::evaluate()
 {
-	evaluate_times.push_back(getTimerByName("FROM_POLY_OUTPUT")->getTime() * 1000.);
-	AutoTimer timer(&(evaluate_times.back())); // measure evaluation time
+    //evaluate_times.push_back(0.0);
+	//AutoTimer timer(&(evaluate_times.back())); // measure evaluation time
 	const EncryptedArray *ea = context->ea;
     const long l = ea->size();
     const long d = ea->getDegree();
@@ -217,16 +202,15 @@ void SMPServer::evaluate()
 
 void SMPServer::response_ctx(tcp::iostream &conn)
 {
-	response_ctx_times.push_back(0.);
-	AutoTimer timer(&(response_ctx_times.back()));
+	//response_ctx_times.push_back(0.);
+	//AutoTimer timer(&(response_ctx_times.back()));
 	int64_t ctx_cnt = results.size();
 	conn << ctx_cnt << std::endl;
 	for (auto const& ctx : results) {
 		conn << ctx;
-        ctx_sent++;
+        //ctx_sent++;
     }
     /// sent the evalution time, just for statistics
-	evaluate_times.back() += getTimerByName("TO_POLY_OUTPUT")->getTime() * 1000.;
-    conn << evaluate_times.back() + process_columns_times.back();
+    //conn << evaluate_times.back() + process_columns_times.back();
 	conn.flush();
 }

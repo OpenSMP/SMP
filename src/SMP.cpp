@@ -13,11 +13,15 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <queue>
 #include <iostream>
+#include <thread>
+#include <future>
 #include <numeric>
 #include <list>
+#include <memory>
 using boost::asio::ip::tcp;
-constexpr int REPEAT = 10;
+constexpr int REPEAT = 1;
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -242,23 +246,93 @@ int run_client(std::string const& addr, long port,
     return 1;
 }
 
+template <typename T>
+class Queue
+{
+public:
+
+    T pop()
+    {
+        std::unique_lock<std::mutex> mlock(mutex_);
+        while (queue_.empty())
+        {
+            cond_.wait(mlock);
+        }
+        auto item = std::move(queue_.front());
+        queue_.pop();
+        return item;
+    }
+
+    void pop(T& item)
+    {
+        std::unique_lock<std::mutex> mlock(mutex_);
+        while (queue_.empty())
+        {
+            cond_.wait(mlock);
+        }
+        item = std::move(queue_.front());
+        queue_.pop();
+    }
+
+    void push(const T& item)
+    {
+        std::unique_lock<std::mutex> mlock(mutex_);
+        queue_.push(item);
+        mlock.unlock();
+        cond_.notify_one();
+    }
+
+    void push(T&& item)
+    {
+        std::unique_lock<std::mutex> mlock(mutex_);
+        queue_.push(std::move(item));
+        mlock.unlock();
+        cond_.notify_one();
+    }
+
+private:
+    std::queue<T> queue_;
+    std::mutex mutex_;
+    std::condition_variable cond_;
+};
+
 int run_server(long port, long n1, long n2, long n3) {
+    using connect_t = std::unique_ptr<tcp::iostream>;
+    Queue<connect_t> queue;
+    
+    auto prgm = [&queue](long n1, long n2, long n3) {
+        for (;;) {
+            connect_t conn = std::move(queue.pop());
+            if (!conn)
+                continue;
+            SMPServer server;
+            server.run(*conn, n1, n2, n3);
+            conn->close();
+        }
+    };
+
+    std::vector<std::thread> workers;
+    for (int w = 0; w < 60; ++w) {
+        workers.emplace_back(prgm, n1, n2, n3);
+    }
+
     boost::asio::io_service ios;
     tcp::endpoint endpoint(tcp::v4(), port);
     tcp::acceptor acceptor(ios, endpoint);
-    for (long run = 0; run < REPEAT; run++) {
-
-        tcp::iostream conn;
+    for (;;) {
         boost::system::error_code err;
-        acceptor.accept(*conn.rdbuf(), err);
-
+        tcp::iostream *conn= new tcp::iostream();
+        acceptor.accept(*(conn->rdbuf()), err);
         if (!err) {
-			SMPServer server;
-			server.run(conn, n1, n2, n3);
-			resetAllTimers(); // reset timers in HElib
+            //std::cout << "Receive from " << conn->rdbuf()->remote_endpoint().address().to_string() << "@";
+            //std::cout << conn->rdbuf()->remote_endpoint().port() << "\n";
+            connect_t _conn(conn);
+            queue.push(std::move(_conn));
+        } else {
+            delete conn;
         }
     }
-	SMPServer::print_statistics();
+
     return 0;
 }
 

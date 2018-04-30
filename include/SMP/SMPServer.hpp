@@ -27,11 +27,11 @@ public:
 	static void print_statistics();
 
 protected:
-	static std::vector<double> setup_times;
-	static std::vector<double> process_columns_times;
-	static std::vector<double> receive_ctx_times;
-	static std::vector<double> evaluate_times;
-	static std::vector<double> response_ctx_times;
+	//static std::vector<double> setup_times;
+	//static std::vector<double> process_columns_times;
+	//static std::vector<double> receive_ctx_times;
+	//static std::vector<double> evaluate_times;
+	//static std::vector<double> response_ctx_times;
 
 	void setup(tcp::iostream &conn);
 
@@ -48,10 +48,6 @@ protected:
 private:
 	Matrix A, B;
 	Matrix ground_truth;
-
-    std::atomic<int> ctx_sent, ctx_received;
-    std::atomic<bool> kill_signal;
-    std::thread network_watcher;
 
 	FHEcontext *context = nullptr;
 	FHEPubKey *ek = nullptr;
