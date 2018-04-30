@@ -1,6 +1,7 @@
 #include "dgk.h"
 #include "SMP/Matrix.hpp"
 #include "SMP/Timer.hpp"
+#include "SMP/network/ConcurrentQueue.hpp"
 #include "HElib/NumbTh.h"
 #include "SMP/literal.hpp"
 #include <NTL/matrix.h>
@@ -10,8 +11,8 @@
 #include <iostream>
 #include <numeric>
 #include <list>
+#include <thread>
 using boost::asio::ip::tcp;
-constexpr int REPEAT = 10;
 
 void get_rand_file( void* buf, int len, char* file )
 {
@@ -61,7 +62,7 @@ void init_rand( gmp_randstate_t rand, get_rand_t get_rand, int bytes )
 	free(buf);
 }
 
-using EncMatrix = std::vector<mpz_t>;//NTL::Mat<mpz_t>;
+using EncMatrix = std::vector<mpz_t>;
 
 void randomize_matrix(Matrix &mat)
 {
@@ -93,36 +94,42 @@ void encrypt_matrix(EncMatrix &dst, Matrix const& src, dgk_pubkey_t const* pk)
 	mpz_clear(pt);
 }
 
-struct ClientBenchmark {
-    std::vector<double> enc_times;
-    std::vector<double> dec_times;
-    std::vector<double> total_times;
-    int ctx_sent, ctx_recv;
-};
-ClientBenchmark clt_ben;
-
-struct ServerBenchmark {
-    std::vector<double> eval_times;
-};
-ServerBenchmark srv_ben;
-
-
 void play_server(std::iostream &conn, long n1, long n2, long n3);
 void play_client(std::iostream &conn, dgk_prvkey_t *sk, dgk_pubkey_t *pk, long n1, long n2, long n3);
 
 void run_server(long port, long n1, long n2, long n3)
 {
-	boost::asio::io_service ios;
+    using connect_t = std::unique_ptr<tcp::iostream>;
+    Queue<connect_t> queue;
+    
+    auto prgm = [&queue](long n1, long n2, long n3) {
+        for (;;) {
+            connect_t conn = std::move(queue.pop());
+            if (!conn)
+                continue;
+            play_server(*conn, n1, n2, n3);
+            conn->close();
+        }
+    };
+
+    std::vector<std::thread> workers;
+    for (int w = 0; w < 30; ++w) { // 30 workers
+        workers.emplace_back(prgm, n1, n2, n3);
+    }
+
+    boost::asio::io_service ios;
     tcp::endpoint endpoint(tcp::v4(), port);
     tcp::acceptor acceptor(ios, endpoint);
-    for (long run = 0; run < REPEAT; run++) {
-        tcp::iostream conn;
+    for (;;) {
         boost::system::error_code err;
-        acceptor.accept(*conn.rdbuf(), err);
+        tcp::iostream *conn= new tcp::iostream();
+        acceptor.accept(*(conn->rdbuf()), err);
         if (!err) {
-			play_server(conn, n1, n2, n3);
+            connect_t _conn(conn);
+            queue.push(std::move(_conn));
+        } else {
+            delete conn;
         }
-		conn.close();
     }
 }
 
@@ -130,24 +137,20 @@ int run_client(std::string const& addr, long port, long n1, long n2, long n3) {
 	dgk_prvkey_t *sk;
 	dgk_pubkey_t *pk;
 	dgk_keygen(1024, 16, &pk, &sk); // 16-bit plaintexts
-    for (long t = 0; t < REPEAT; t++) {
-        tcp::iostream conn(addr, std::to_string(port));
-        if (!conn) {
-            std::cerr << "Can not connect to server!" << std::endl;
-            return -1;
-        }
-		NetworkLog::bytes_sent = 0;
-		NetworkLog::bytes_recev = 0;
-        double all_time = 0.;
-        do {
-            AutoTimer time(&all_time);
-            play_client(conn, sk, pk, n1, n2, n3);
-        } while(0);
-        clt_ben.total_times.push_back(all_time);
-		clt_ben.ctx_sent = NetworkLog::bytes_sent;
-		clt_ben.ctx_recv = NetworkLog::bytes_recev;
-        conn.close();
+    tcp::iostream conn(addr, std::to_string(port));
+    if (!conn) {
+        std::cerr << "Can not connect to server!" << std::endl;
+        return -1;
     }
+    NetworkLog::bytes_sent = 0;
+    NetworkLog::bytes_recev = 0;
+    double all_time = 0.;
+    do {
+        AutoTimer time(&all_time);
+        play_client(conn, sk, pk, n1, n2, n3);
+    } while(0);
+    printf("%.3f\n", all_time);
+    conn.close();
 	dgk_freeprvkey(sk);
 	dgk_freepubkey(pk);
     return 1;
@@ -172,9 +175,6 @@ int main(int argc, char *argv[]) {
         run_server(port, n1, n2, n3);
     } else if (role == 1) {
         run_client(addr, port, n1, n2, n3);
-		auto md = mean_std(clt_ben.total_times);
-		printf("%.3f %.3f %.3f\n", md.first, md.second, 
-			   (clt_ben.ctx_sent + clt_ben.ctx_recv) / 1024.0 / 1024.0);
     } else {
 		argmap.usage("Secure Matrix Multiplication for |N*M| * |M*D|");
 		return -1;
