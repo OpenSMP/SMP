@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.2)
 include_directories(${GTEST_INCLUDE_DIRS})
 
 set(RUNTIME_LIBS   
-    helib
+    fhe
     cryptgmm
     ntl
     pthread
@@ -12,7 +12,7 @@ set(RUNTIME_LIBS
 
 set(CPP_ITESTS
     test_net_io
-    fast_decryption
+    test_multithread_server
 	test_mult_in_slots
     )
 

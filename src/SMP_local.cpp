@@ -34,11 +34,12 @@ void randomize(Matrix &mat, long p = 3) {
 
 
 void fill_compute(Matrix& mat,
-		long row_blk,
-		long col,
-		const std::vector<long> &inner_prod,
-		const EncryptedArray *ea)
+				  long row_blk,
+				  long col,
+				  const std::vector<long> &inner_prod,
+				  const EncryptedArray *ea)
 {
+	bool is_vec = mat.NumRows() == 1;
 	const long l = ea->size();
 	assert(inner_prod.size() == l);
 	const long row_start = row_blk * l;
@@ -46,7 +47,10 @@ void fill_compute(Matrix& mat,
 		long computed = inner_prod[ll];
 		long row = row_start + ll;
 		if (row < mat.NumRows()) {
-			mat.put(row, col, computed);
+			if (is_vec)
+				mat.put(col, row, computed);
+			else
+				mat.put(row, col, computed);
 		} else {
 			break;
 		}
@@ -131,16 +135,16 @@ void play_client(FHESecKey &sk,
 		 const long n2,
 		 const long n3) 
 {
-	FHEPubKey ek(sk);
 	//* Convert to evalution key.
 	//* This function is not provided by the origin HElib. Checkout our fork.
-	ek.makeSymmetric();
+    sk.convertToSymmetric();
+	FHEPubKey ek(sk);
 	const EncryptedArray *ea = context.ea;
 	const long l = ea->size();
 	const long d = ea->getDegree();
 
 	NTL::SetSeed(NTL::to_ZZ(123));
-	Matrix A, B, ground_truth;
+	Matrix A, B, ground_truth; // clients hold A, server holds B
 	A.SetDims(n1, n2);
 	B.SetDims(n2, n3);
 	randomize(A, ek.getPtxtSpace());
@@ -152,7 +156,7 @@ void play_client(FHESecKey &sk,
 	const long MAX_X2 = round_div(B.NumCols(), l);
 
 	std::vector<std::vector<Ctxt>> uploading;
-	uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, sk));
+	uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, Ctxt(sk)));
 	double enc_time = 0.;
 	double pack_time = 0.;
 	/// encrypt matrix
@@ -160,7 +164,7 @@ void play_client(FHESecKey &sk,
 	for (int x = 0; x < MAX_X1; x++) {
 		for (int k = 0; k < MAX_Y1; k++) {
 			internal::BlockId blk = {x, k};
-			double one_pack_time, one_enc_time;
+			double one_pack_time = 0., one_enc_time = 0.;
 			auto block = internal::partition(A, blk, ea, false);
 			{/// packing
 				AutoTimer timer(&one_pack_time);
@@ -198,7 +202,7 @@ void play_client(FHESecKey &sk,
 	long ctx_idx = 0;
 	bool dec_pass = true;
 	for (const auto &ctx : ret_ctxs) {
-		double one_dec_time, one_unpack_time;
+		double one_dec_time = 0., one_unpack_time = 0.;
 		do {
 			AutoTimer timer(&one_dec_time);
 			dec_pass &= ctx.isCorrect();

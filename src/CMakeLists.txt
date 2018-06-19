@@ -10,7 +10,7 @@ SET(SRC
 add_library(cryptgmm ${SRC})
 
 set(RUNTIME_LIBS   
-    helib
+    fhe
 	cryptgmm
     ntl
     pthread

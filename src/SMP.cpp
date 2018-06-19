@@ -88,10 +88,10 @@ void play_client(tcp::iostream &conn,
                  const long n1,
                  const long n2,
                  const long n3) {
-    FHEPubKey ek(sk);
 	//* Convert to evalution key.
 	//* This function is not provided by the origin HElib. Checkout our fork.
-    ek.makeSymmetric();
+    sk.convertToSymmetric();
+    FHEPubKey ek(sk);
     conn << ek;
     const EncryptedArray *ea = context.ea;
     const long l = ea->size();
@@ -110,7 +110,7 @@ void play_client(tcp::iostream &conn,
     const long MAX_X2 = round_div(B.NumCols(), l);
 
     std::vector<std::vector<Ctxt>> uploading;
-    uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, sk));
+    uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, Ctxt(sk)));
 	double enc_time = 0.;
     double pack_time = 0.;
 	/// encrypt matrix
@@ -156,7 +156,7 @@ void play_client(tcp::iostream &conn,
 	int64_t ctx_cnt = 0;
 	conn >> ctx_cnt;
     clt_ben.ctx_recv = ctx_cnt;
-    std::vector<Ctxt> ret_ctxs(ctx_cnt, ek);
+    std::vector<Ctxt> ret_ctxs(ctx_cnt, Ctxt(ek));
 	for (size_t k = 0; k < ctx_cnt; k++) {
 		conn >> ret_ctxs.at(k);
         //_ctx_received++;

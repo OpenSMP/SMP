@@ -80,8 +80,8 @@ void SMPServer::run(tcp::iostream &conn,
 	A.SetDims(n1, n2);
 	B.SetDims(n2, n3);
 	setup(conn);
-    ctx_sent.load(0);
-    ctx_received.load(0);
+    ctx_sent.store(0);
+    ctx_received.store(0);
     network_watcher = std::thread(wather_program);
 	process_columns();
 	receive_ctx(conn);
@@ -151,7 +151,8 @@ void SMPServer::receive_ctx(tcp::iostream &conn)
 	const long MAX_X1 = round_div(A.NumRows(), l);
     const long MAX_Y1 = round_div(A.NumCols(), d);
 
-	enc_A_blk.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, *ek));
+    Ctxt tmp(*ek);
+	enc_A_blk.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, tmp));
     for (int x = 0; x < MAX_X1; x++) {
         for (int k = 0; k < MAX_Y1; k++) {
             conn >> enc_A_blk[x][k];

@@ -27,10 +27,11 @@ bool check(NTL::ZZX const& factor) {
 }
 
 void DoublePacking(long m, long slots) {
-	long p = NTL::NextPrime(81910);
+	long p = NTL::RandomPrime_long(17, 20);
 	long phim = phi_N(m);
 	assert(phim == (m >> 1));
-	while (true) {
+	long count = 0;
+	while (count < 10) {
 		long d = multOrd(p, m);
 		long s = phim / d;
 		if (s == slots) {
@@ -40,8 +41,8 @@ void DoublePacking(long m, long slots) {
 			for (const auto& f : ftrs)
 				ok &= check(f);
 			if (ok) {
-				printf("%ld %ld\n", m, p);
-				break;
+				printf("%ld %ld %f\n", m, p, std::log(p) / std::log(2.));
+				count += 1;
 			}
 		}
 		do {
@@ -52,7 +53,7 @@ void DoublePacking(long m, long slots) {
 
 int main() {
     //MiniONN(8192);
-	DoublePacking(8192 << 1, 256);
+	DoublePacking(16384, 64);
 	//DoublePacking(8192, 64);
 	// DoublePacking(8192, 256);
 	// DoublePacking(8192, 512);

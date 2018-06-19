@@ -65,7 +65,7 @@ void encrypt_vector(EncVec &out,
 		AutoTimer timer(pack_time);
 		pack_vector(polys, vec, 0, ea);
 	}
-	out.ctxts.resize(polys.size(), key);
+	out.ctxts.resize(polys.size(), Ctxt(key));
 	for (size_t i = 0; i < polys.size(); i++) {
 		key.Encrypt(out.ctxts[i], polys.at(i));
 	}
@@ -173,8 +173,8 @@ void play_client(tcp::iostream &conn,
                  const long n2,
                  const long n3)
 {
+    sk.convertToSymmetric();
 	FHEPubKey ek(sk);
-    ek.makeSymmetric();
     conn << ek; // send evaluation key
     const EncryptedArray *ea = context.ea;
     const long l = ea->size();
@@ -205,7 +205,7 @@ void play_client(tcp::iostream &conn,
 	int64_t result_ctx_cnt;
 	conn >> result_ctx_cnt;
     clt_ben.ctx_recv = result_ctx_cnt;
-    std::vector<Ctxt> result(result_ctx_cnt, ek);
+    std::vector<Ctxt> result(result_ctx_cnt, Ctxt(ek));
 	for (size_t i = 0; i < result_ctx_cnt; i++)
 		conn >> result[i];
     double eval_time = 0.;
@@ -255,7 +255,7 @@ void play_server(tcp::iostream &conn,
 	int64_t ctx_cnt;
 	conn >> ctx_cnt;
 	EncVec enc_vec;
-	enc_vec.ctxts.resize(ctx_cnt, evk);
+	enc_vec.ctxts.resize(ctx_cnt, Ctxt(evk));
 	for (size_t i = 0; i < ctx_cnt; i++) // receive ciphertexts from the client.
 		conn >> enc_vec.ctxts[i];
 
