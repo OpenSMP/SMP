@@ -49,10 +49,6 @@ private:
 	Matrix A, B;
 	Matrix ground_truth;
 
-    std::atomic<int> ctx_sent, ctx_received;
-    std::atomic<bool> kill_signal;
-    std::thread network_watcher;
-
 	FHEcontext *context = nullptr;
 	FHEPubKey *ek = nullptr;
 	std::vector<std::vector<Ctxt>> enc_A_blk;

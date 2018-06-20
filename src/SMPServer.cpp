@@ -25,11 +25,7 @@ std::vector<double> SMPServer::receive_ctx_times;
 std::vector<double> SMPServer::evaluate_times;
 std::vector<double> SMPServer::response_ctx_times;
 
-SMPServer::SMPServer() 
-    : ctx_sent(0), 
-    ctx_received(0), 
-    kill_signal(false) {
-}
+SMPServer::SMPServer() { }
 
 SMPServer::~SMPServer() 
 {
@@ -71,24 +67,13 @@ void SMPServer::run(tcp::iostream &conn,
 					const long n2,
 					const long n3) 
 {
-    auto wather_program = [this]() {
-        while (!kill_signal.load()) {
-            std::cout << ctx_sent.load() + ctx_received.load() << "\n";
-            usleep(100000); // 100ms
-        }
-    };
 	A.SetDims(n1, n2);
 	B.SetDims(n2, n3);
 	setup(conn);
-    ctx_sent.store(0);
-    ctx_received.store(0);
-    network_watcher = std::thread(wather_program);
 	process_columns();
 	receive_ctx(conn);
 	evaluate();
 	response_ctx(conn);
-    kill_signal.store(true);
-    network_watcher.join();
 }
 
 void SMPServer::setup(tcp::iostream &conn)
@@ -156,7 +141,6 @@ void SMPServer::receive_ctx(tcp::iostream &conn)
     for (int x = 0; x < MAX_X1; x++) {
         for (int k = 0; k < MAX_Y1; k++) {
             conn >> enc_A_blk[x][k];
-            ctx_received++;
         }
     }
 }
@@ -224,7 +208,6 @@ void SMPServer::response_ctx(tcp::iostream &conn)
 	conn << ctx_cnt << std::endl;
 	for (auto const& ctx : results) {
 		conn << ctx;
-        ctx_sent++;
     }
     /// sent the evalution time, just for statistics
 	evaluate_times.back() += getTimerByName("TO_POLY_OUTPUT")->getTime() * 1000.;
