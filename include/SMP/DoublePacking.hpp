@@ -5,7 +5,7 @@
 #ifndef CRYPTGMM_DOUBLEPACKING_HPP
 #define CRYPTGMM_DOUBLEPACKING_HPP
 #include "SMP/Matrix.hpp"
-#include "NTL/ZZX.h"
+#include "HElib/NumbTh.h"
 #include <vector>
 
 class FHESecKey;
@@ -16,7 +16,7 @@ namespace internal {
     };
 
     struct PackedRows {
-        std::vector<NTL::zz_pX> polys;
+        std::vector<zzX> polys;
         long num_duplication;
     };
 

@@ -5,6 +5,7 @@ SET(SRC
     net_io.cpp
 	SMPServer.cpp
 	DoublePacking.cpp
+	BasicAutomorphPrecon.cpp
     )
 
 add_library(cryptgmm ${SRC})

@@ -2,10 +2,11 @@
 #include <HElib/FHEContext.h>
 #include <HElib/EncryptedArray.h>
 #include <HElib/PAlgebra.h>
-#include <NTL/ZZX.h>
 #include <NTL/lzz_pX.h>
+#include <HElib/matmul.h>
 
 #include <algorithm>
+
 void rawEncode(NTL::zz_pX &out,
                std::vector<NTL::zz_pX> const& slots,
                FHEcontext const& context)
@@ -150,13 +151,46 @@ void extract_inner_products(std::vector<long> &out,
     }
 }
 
-void faster_decrypt(NTL::Vec<long> &out,
-                    FHESecKey const& sk,
-                    Ctxt const& ctx)
+bool init_coeff_extractor_aux(CoeffExtractorAux *aux, FHEcontext const& context)
 {
-    const FHEcontext& context = sk.getContext();
-    assert(ctx.getPrimeSet().card() == 1);
-    DoubleCRT dcrt(context, ctx.getPrimeSet()); // Set to zero
-    sk.Decrypt(dcrt, ctx);
-    dcrt.getOneRow(out, 0);
+    FHE_TIMER_START;
+    if (!aux)
+        return false;
+   
+    const EncryptedArray *ea = context.ea;
+    size_t l = static_cast<size_t>(ea->size());
+    size_t d = static_cast<size_t>(ea->getDegree());
+    
+    std::vector<NTL::ZZX> L(d, NTL::to_ZZX(0));
+    // to extract the coefficent of X^{d-1} as the coefficent of X^0
+    L[d - 1] = NTL::to_ZZX(1); 
+    std::vector<NTL::ZZX> alphas;
+    ea->buildLinPolyCoeffs(alphas, L);
+    // only need to use alpha_0.
+    // we pack alpha_0 to each slot
+    std::vector<NTL::ZZX> packed_alpha(l, alphas[0]);
+    ea->encode(aux->alpha, packed_alpha);
+    aux->merge_offsets.resize(d);
+    for (long j = 1; j < d; ++j) {
+        std::vector<NTL::ZZX> tmp(l, NTL::ZZX(j, 1));
+        ea->encode(aux->merge_offsets[j], tmp);
+    }
+
+    aux->m = context.zMStar.getM();
+    aux->t = context.zMStar.getP();
+    aux->d = ea->getDegree();
+    return true;
+}
+
+Ctxt merge_ctxts_by_shifting(Ctxt const* ctxt, size_t cnt, CoeffExtractorAux const& aux)
+{
+    FHE_TIMER_START;
+    assert(ctxt && cnt > 0);
+    Ctxt ans(*ctxt);
+    for (int j = 1; j < cnt; ++j) {
+        Ctxt tmp(ctxt[j]);
+        tmp.multByConstant(aux.merge_offsets.at(j));
+        ans += tmp;
+    }
+    return ans;
 }

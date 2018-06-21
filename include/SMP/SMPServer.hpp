@@ -2,6 +2,7 @@
 #define CRYPT_GMM_SMP_SERVER_HPP
 #include <HElib/EncryptedArray.h>
 #include <HElib/Ctxt.h>
+#include <HElib/NumbTh.h>
 
 #include "SMP/Matrix.hpp"
 #include "SMP/DoublePacking.hpp"
@@ -24,15 +25,8 @@ public:
 			 const long n1,
 			 const long n2,
 			 const long n3);
-	static void print_statistics();
 
 protected:
-	static std::vector<double> setup_times;
-	static std::vector<double> process_columns_times;
-	static std::vector<double> receive_ctx_times;
-	static std::vector<double> evaluate_times;
-	static std::vector<double> response_ctx_times;
-
 	void setup(tcp::iostream &conn);
 
 	void process_columns();
@@ -53,7 +47,7 @@ private:
 	FHEPubKey *ek = nullptr;
 	std::vector<std::vector<Ctxt>> enc_A_blk;
 	NTL::Mat<internal::PackedRows> plain_B_blk;
-	NTL::Mat<NTL::ZZX> encoded_plain_B_blk;
+	NTL::Mat<zzX> encoded_plain_B_blk;
 	std::list<Ctxt> results;
 };
 #endif // CRYPT_GMM_SMP_SERVER_HPP

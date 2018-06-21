@@ -35,9 +35,10 @@ PackedRows partition(Matrix const& matrix, BlockId const& blk,
             if (backward)
                 coeff = d - 1 - coeff;
             assert(coeff >= 0 && coeff <= d - 1);
-            NTL::SetCoeff(ret.polys[offset], coeff, matrix[row][col]);
+            ret.polys.at(offset).at(coeff) = matrix[row][col];
         }
     }
+
 	if (matrix.NumRows() == 1) { // a special case 
 		ret.polys.assign(l, ret.polys.front()); // copy the first with l copies.
 	}

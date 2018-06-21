@@ -31,6 +31,7 @@ void zero(Matrix &mat) {
 }
 
 void randomize(Matrix &mat, long p = 3) {
+    p = 11;
     for (long i = 0; i < mat.NumRows(); i++)
         for (long j = 0; j < mat.NumCols(); j++)
             mat[i][j] = NTL::RandomBnd(p);
@@ -91,11 +92,11 @@ void play_client(tcp::iostream &conn,
 	//* Convert to evalution key.
 	//* This function is not provided by the origin HElib. Checkout our fork.
     sk.convertToSymmetric();
-    FHEPubKey ek(sk);
+    const FHEPubKey &ek(sk);
     conn << ek;
-    const EncryptedArray *ea = context.ea;
-    const long l = ea->size();
-    const long d = ea->getDegree();
+    const auto& ea = context.ea->getDerived(PA_zz_p());
+    const long l = ea.size();
+    const long d = ea.getDegree();
 
     Matrix A, B, ground_truth;
     A.SetDims(n1, n2);
@@ -110,7 +111,7 @@ void play_client(tcp::iostream &conn,
     const long MAX_X2 = round_div(B.NumCols(), l);
 
     std::vector<std::vector<Ctxt>> uploading;
-    uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, Ctxt(sk)));
+    uploading.resize(MAX_X1, std::vector<Ctxt>(MAX_Y1, Ctxt(ek)));
 	double enc_time = 0.;
     double pack_time = 0.;
 	/// encrypt matrix
@@ -120,10 +121,12 @@ void play_client(tcp::iostream &conn,
 			internal::BlockId blk = {x, k};
 			double one_pack_time = 0.;
 			double one_enc_time = 0.;
-			auto block = internal::partition(A, blk, ea, false);
+			auto block = internal::partition(A, blk, context.ea, false);
 			{/// packing
 				AutoTimer timer(&one_pack_time);
-				rawEncode(packed_poly, block.polys, context);
+                zzX _tmp;
+                ea.encode(_tmp, block.polys);
+                convert(packed_poly, _tmp);
 			}
 			{/// encryption
 				AutoTimer timer(&one_enc_time);
@@ -140,14 +143,17 @@ void play_client(tcp::iostream &conn,
     for (auto const& row : uploading) {
         for (auto const& ctx : row) {
             conn << ctx;
-            //_ctx_sent++;
         }
     }
 	conn.flush();
     clt_ben.ctx_sent = MAX_X1 * MAX_Y1;
-	/// we convert DoubleCRT to poly form when send ciphertexts through, and thus, we
-	/// count this cost as a part of encryption.
-	clt_ben.enc_times.back() += getTimerByName("TO_POLY_OUTPUT")->getTime() * 1000.;
+    {
+        /// we convert DoubleCRT to poly form when send ciphertexts through, and thus, we
+        /// count this cost as a part of encryption.
+        auto timer = getTimerByName("TO_POLY_OUTPUT");
+        if (timer)
+            clt_ben.enc_times.back() += timer->getTime() * 1000.;
+    }
 
     std::vector<GMMPrecompTable> tbls = precompute_gmm_tables(context);
     /// waiting results
@@ -159,104 +165,95 @@ void play_client(tcp::iostream &conn,
     std::vector<Ctxt> ret_ctxs(ctx_cnt, Ctxt(ek));
 	for (size_t k = 0; k < ctx_cnt; k++) {
 		conn >> ret_ctxs.at(k);
-        //_ctx_received++;
     }
     double eval_time = 0.;
     conn >> eval_time;
     srv_ben.eval_times.push_back(eval_time);
-    /// decrypt
-    Matrix computed;
-    computed.SetDims(A.NumRows(), B.NumCols());
-    zero(computed);
-    int x = 0;
-    int y = 0;
-    std::vector<long> slots;
-    std::vector<NTL::zz_pX> _slots;
-    //NTL::Vec<long> decrypted;
-	NTL::ZZX decrypted;
-	double decrypt_time = 0.;
-    double unpack_time = 0.;
-	long ctx_idx = 0;
-	bool dec_pass = true;
-	for (const auto &ctx : ret_ctxs) {
-		double one_dec_time = 0.;
-		double one_unpack_time = 0.;
-		do {
-			AutoTimer timer(&one_dec_time);
-			dec_pass &= ctx.isCorrect();
-			//faster_decrypt(decrypted, sk, ctx);
-			sk.Decrypt(decrypted, ctx);
-		} while(0);
-		do {
-			AutoTimer timer(&one_unpack_time);
-            extract_inner_products(slots, decrypted, tbls, context);
-		} while(0);
-        decrypt_time += one_dec_time;
-        unpack_time += one_unpack_time;
 
-		long row_blk = ctx_idx / B.NumCols();
-		long column = ctx_idx % B.NumCols();
-		ctx_idx += 1;
-        fill_compute(computed, row_blk, column, slots, ea);
+    for (const auto& ctx : ret_ctxs) {
+        std::vector<NTL::ZZX> _dec;
+        ea.decrypt(ctx, sk, _dec);
+        for (auto &ss : _dec) {
+            if (NTL::coeff(ss, ea.getDegree() - 1) == 0)
+                break;
+            std::cout << NTL::coeff(ss, ea.getDegree() - 1) << " ";
+        }
+        std::cout << "\n";
     }
-	/// we convert poly to DoubleCRT when receiving ciphertexts.
-	decrypt_time += getTimerByName("FROM_POLY_OUTPUT")->getTime() * 1000.;
-    clt_ben.dec_times.push_back(decrypt_time);
-    clt_ben.unpack_times.push_back(unpack_time);
-	if (!::is_same(ground_truth, computed, NTL::zz_p::modulus()))
-		std::cerr << "The computation seems wrong " << std::endl;
-	if (!dec_pass)
-		std::cerr << "Decryption might fail" << std::endl;
-    global_counter++;
+
+    ///// decrypt
+    //Matrix computed;
+    //computed.SetDims(A.NumRows(), B.NumCols());
+    //zero(computed);
+    //int x = 0;
+    //int y = 0;
+    //std::vector<long> slots;
+    //std::vector<NTL::zz_pX> _slots;
+	//NTL::ZZX decrypted;
+	//double decrypt_time = 0.;
+    //double unpack_time = 0.;
+	//long ctx_idx = 0;
+	//bool dec_pass = true;
+	//for (const auto &ctx : ret_ctxs) {
+	//	double one_dec_time = 0.;
+	//	double one_unpack_time = 0.;
+	//	do {
+	//		AutoTimer timer(&one_dec_time);
+	//		dec_pass &= ctx.isCorrect();
+	//		//faster_decrypt(decrypted, sk, ctx);
+	//		sk.Decrypt(decrypted, ctx);
+	//	} while(0);
+	//	do {
+	//		AutoTimer timer(&one_unpack_time);
+    //        extract_inner_products(slots, decrypted, tbls, context);
+	//	} while(0);
+    //    decrypt_time += one_dec_time;
+    //    unpack_time += one_unpack_time;
+
+	//	long row_blk = ctx_idx / B.NumCols();
+	//	long column = ctx_idx % B.NumCols();
+	//	ctx_idx += 1;
+    //    fill_compute(computed, row_blk, column, slots, context.ea);
+    //}
+	///// we convert poly to DoubleCRT when receiving ciphertexts.
+	//decrypt_time += getTimerByName("FROM_POLY_OUTPUT")->getTime() * 1000.;
+    //clt_ben.dec_times.push_back(decrypt_time);
+    //clt_ben.unpack_times.push_back(unpack_time);
+	//if (!::is_same(ground_truth, computed, NTL::zz_p::modulus()))
+	//	std::cerr << "The computation seems wrong " << std::endl;
+	//if (!dec_pass)
+	//	std::cerr << "Decryption might fail" << std::endl;
 }
 
 int run_client(std::string const& addr, long port,
                long n1, long n2, long n3) {
-    const long m = 8192;
-    const long p = 70913;
-    const long r = 1;
-    const long L = 2;
-    NTL::zz_p::init(p);
-    FHEcontext context(m, p, r);
-    context.bitsPerLevel = 60;
+    const long m = 8192 << 1;
+	const long p = 70657;
+	const long r = 1;
+	const long L = 3;
+	NTL::zz_p::init(p);
+	FHEcontext context(m, p, r);
+	context.bitsPerLevel = 30;
     buildModChain(context, L);
     FHESecKey sk(context);
-    sk.GenSecKey(64);
-    auto start_time_stamp = std::clock();
-    auto last_time_stamp = std::clock();
-    int done = 0;
-    while (true) {
-        tcp::iostream conn(addr, std::to_string(port));
-        if (!conn) {
-            std::cerr << "Can not connect to server!" << std::endl;
-            return -1;
-        }
-
-        /// send FHEcontext obj
-        double all_time = 0.;
-        do {
-            send_context(conn, context);
-            AutoTimer time(&all_time);
-            // send the evaluation key
-            play_client(conn, sk, context, n1, n2, n3);
-        } while(0);
-        clt_ben.total_times.push_back(all_time);
-        conn.close();
-		resetAllTimers(); // reset timers in HElib
-
-        ++done;
-        auto now_time = std::clock();
-        if (now_time - last_time_stamp >= 60 * CLOCKS_PER_SEC) {
-            std::cout << done << "\n";
-            last_time_stamp = now_time;
-        }
-
-        if (now_time - start_time_stamp >= 3600 * CLOCKS_PER_SEC) {
-            /// one hour
-            break;
-        }
+    sk.GenSecKey(64, 0, 1);
+    tcp::iostream conn(addr, std::to_string(port));
+    if (!conn) {
+        std::cerr << "Can not connect to server!" << std::endl;
+        return -1;
     }
-    std::cout << "one hour finished: " << done << "\n";
+
+    /// send FHEcontext obj
+    double all_time = 0.;
+    do {
+        send_context(conn, context);
+        AutoTimer time(&all_time);
+        // send the evaluation key
+        play_client(conn, sk, context, n1, n2, n3);
+    } while(0);
+    clt_ben.total_times.push_back(all_time);
+    conn.close();
+    resetAllTimers(); // reset timers in HElib
     return 0;
 }
 
@@ -275,7 +272,6 @@ int run_server(long port, long n1, long n2, long n3) {
 			resetAllTimers(); // reset timers in HElib
         }
     }
-	SMPServer::print_statistics();
     return 0;
 }
 
