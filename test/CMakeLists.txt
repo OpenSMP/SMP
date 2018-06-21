@@ -14,6 +14,9 @@ set(CPP_ITESTS
     test_net_io
     test_multithread_server
 	test_mult_in_slots
+    test_coefficient_extract
+    test_mapping_G
+    test_applyLin
     )
 
 #The integration tests must be single source code, and are compiled as a standalone application

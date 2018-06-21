@@ -196,7 +196,7 @@ void play_client(FHESecKey &sk,
 	int x = 0;
 	int y = 0;
 	std::vector<long> slots;
-    NTL::Vec<long> decrypted;
+    NTL::ZZX decrypted;
 	double decrypt_time = 0.;
 	double unpack_time = 0.;
 	long ctx_idx = 0;
@@ -206,8 +206,7 @@ void play_client(FHESecKey &sk,
 		do {
 			AutoTimer timer(&one_dec_time);
 			dec_pass &= ctx.isCorrect();
-			faster_decrypt(decrypted, sk, ctx);
-			//sk.Decrypt(decrypted, ctx);
+			sk.Decrypt(decrypted, ctx);
 		} while(0);
 		do {
 			AutoTimer timer(&one_unpack_time);
@@ -230,16 +229,16 @@ void play_client(FHESecKey &sk,
 }
 
 int run(long n1, long n2, long n3) {
-	const long m = 8192;
-	const long p = 70913;
+	const long m = 8192 << 1;
+	const long p = 70657;
 	const long r = 1;
-	const long L = 2;
+	const long L = 3;
 	NTL::zz_p::init(p);
 	FHEcontext context(m, p, r);
-	context.bitsPerLevel = 60;
+	context.bitsPerLevel = 30;
 	buildModChain(context, L);
 	FHESecKey sk(context);
-	sk.GenSecKey(64);
+	sk.GenSecKey(64, 0, 1);
 	for (long t = 0; t < REPEAT; t++) {
 		double all_time = 0.;
 		{

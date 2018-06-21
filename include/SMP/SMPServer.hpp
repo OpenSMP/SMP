@@ -37,6 +37,8 @@ protected:
 
 	void evaluate_mat_vec();
 
+	void extract_and_merge();
+
 	void response_ctx(tcp::iostream &conn);
 
 private:
@@ -48,6 +50,7 @@ private:
 	std::vector<std::vector<Ctxt>> enc_A_blk;
 	NTL::Mat<internal::PackedRows> plain_B_blk;
 	NTL::Mat<zzX> encoded_plain_B_blk;
+	std::vector<std::vector<zzX>> linear_map_coeffs;
 	std::list<Ctxt> results;
 };
 #endif // CRYPT_GMM_SMP_SERVER_HPP

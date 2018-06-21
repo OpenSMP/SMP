@@ -18,7 +18,6 @@
 #include <list>
 using boost::asio::ip::tcp;
 constexpr int REPEAT = 1;
-std::atomic<int> global_counter(0);
 
 inline long round_div(long a, long b) {
     return (a + b - 1) / b;
@@ -68,20 +67,38 @@ void fill_compute(Matrix& mat,
     }
 }
 
+struct ServerBenchmark {
+    std::vector<double> eval_times;
+};
+
 struct ClientBenchmark {
     std::vector<double> pack_times;
     std::vector<double> enc_times;
     std::vector<double> dec_times;
     std::vector<double> unpack_times;
     std::vector<double> total_times;
+
+    ServerBenchmark ser_ben;
     int ctx_sent, ctx_recv;
+
+    std::vector<const std::vector<double> *> get_times() const {
+        std::vector<const std::vector<double> *> times;
+        times.push_back(&pack_times);
+        times.push_back(&enc_times);
+        times.push_back(&ser_ben.eval_times);
+        times.push_back(&dec_times);
+        times.push_back(&unpack_times);
+        times.push_back(&total_times);
+        return times;
+    }
+
+    void print_head() const {
+        printf("pack\t enc\t eval\t dec\t unpack\t total\n");
+    }
 };
+
 ClientBenchmark clt_ben;
 
-struct ServerBenchmark {
-    std::vector<double> eval_times;
-};
-ServerBenchmark srv_ben;
 
 void play_client(tcp::iostream &conn,
                  FHESecKey &sk,
@@ -119,21 +136,17 @@ void play_client(tcp::iostream &conn,
 	for (int x = 0; x < MAX_X1; x++) {
 		for (int k = 0; k < MAX_Y1; k++) {
 			internal::BlockId blk = {x, k};
-			double one_pack_time = 0.;
-			double one_enc_time = 0.;
 			auto block = internal::partition(A, blk, context.ea, false);
 			{/// packing
-				AutoTimer timer(&one_pack_time);
+				AutoTimer timer(&pack_time);
                 zzX _tmp;
                 ea.encode(_tmp, block.polys);
                 convert(packed_poly, _tmp);
 			}
 			{/// encryption
-				AutoTimer timer(&one_enc_time);
+				AutoTimer timer(&enc_time);
 				sk.Encrypt(uploading[x][k], packed_poly);
 			}
-			pack_time += one_pack_time;
-			enc_time += one_enc_time;
 		}
 	}
     clt_ben.pack_times.push_back(pack_time);
@@ -168,61 +181,31 @@ void play_client(tcp::iostream &conn,
     }
     double eval_time = 0.;
     conn >> eval_time;
-    srv_ben.eval_times.push_back(eval_time);
+    clt_ben.ser_ben.eval_times.push_back(eval_time);
 
-    for (const auto& ctx : ret_ctxs) {
-        std::vector<NTL::ZZX> _dec;
-        ea.decrypt(ctx, sk, _dec);
-        for (auto &ss : _dec) {
-            if (NTL::coeff(ss, ea.getDegree() - 1) == 0)
-                break;
-            std::cout << NTL::coeff(ss, ea.getDegree() - 1) << " ";
+    double dec_time = 0., unpack_time = 0.;
+    std::vector<NTL::ZZX> _dec;
+    NTL::ZZX _plain;
+    for (const auto &ctx : ret_ctxs) {
+        if (!ctx.isCorrect()) {
+            std::cout << "WARN: decryption might fail.";
+            std::cout << "log ratio " << ctx.log_of_ratio() << std::endl;
         }
-        std::cout << "\n";
+
+        {
+            AutoTimer timer(&dec_time);
+            sk.Decrypt(_plain, ctx);
+        }
+        {
+            AutoTimer timer(&unpack_time);
+            ea.decode(_dec, _plain);
+        }
     }
 
-    ///// decrypt
-    //Matrix computed;
-    //computed.SetDims(A.NumRows(), B.NumCols());
-    //zero(computed);
-    //int x = 0;
-    //int y = 0;
-    //std::vector<long> slots;
-    //std::vector<NTL::zz_pX> _slots;
-	//NTL::ZZX decrypted;
-	//double decrypt_time = 0.;
-    //double unpack_time = 0.;
-	//long ctx_idx = 0;
-	//bool dec_pass = true;
-	//for (const auto &ctx : ret_ctxs) {
-	//	double one_dec_time = 0.;
-	//	double one_unpack_time = 0.;
-	//	do {
-	//		AutoTimer timer(&one_dec_time);
-	//		dec_pass &= ctx.isCorrect();
-	//		//faster_decrypt(decrypted, sk, ctx);
-	//		sk.Decrypt(decrypted, ctx);
-	//	} while(0);
-	//	do {
-	//		AutoTimer timer(&one_unpack_time);
-    //        extract_inner_products(slots, decrypted, tbls, context);
-	//	} while(0);
-    //    decrypt_time += one_dec_time;
-    //    unpack_time += one_unpack_time;
-
-	//	long row_blk = ctx_idx / B.NumCols();
-	//	long column = ctx_idx % B.NumCols();
-	//	ctx_idx += 1;
-    //    fill_compute(computed, row_blk, column, slots, context.ea);
-    //}
 	///// we convert poly to DoubleCRT when receiving ciphertexts.
-	//decrypt_time += getTimerByName("FROM_POLY_OUTPUT")->getTime() * 1000.;
-    //clt_ben.dec_times.push_back(decrypt_time);
-    //clt_ben.unpack_times.push_back(unpack_time);
-	//if (!::is_same(ground_truth, computed, NTL::zz_p::modulus()))
-	//	std::cerr << "The computation seems wrong " << std::endl;
-	//if (!dec_pass)
-	//	std::cerr << "Decryption might fail" << std::endl;
+	dec_time += getTimerByName("FROM_POLY_OUTPUT")->getTime() * 1000.;
+    clt_ben.dec_times.push_back(dec_time);
+    clt_ben.unpack_times.push_back(unpack_time);
 }
 
 int run_client(std::string const& addr, long port,
@@ -233,10 +216,11 @@ int run_client(std::string const& addr, long port,
 	const long L = 3;
 	NTL::zz_p::init(p);
 	FHEcontext context(m, p, r);
-	context.bitsPerLevel = 30;
+	context.bitsPerLevel = 50;
     buildModChain(context, L);
     FHESecKey sk(context);
     sk.GenSecKey(64, 0, 1);
+    addFrbMatrices(sk);
     tcp::iostream conn(addr, std::to_string(port));
     if (!conn) {
         std::cerr << "Can not connect to server!" << std::endl;
@@ -248,7 +232,6 @@ int run_client(std::string const& addr, long port,
     do {
         send_context(conn, context);
         AutoTimer time(&all_time);
-        // send the evaluation key
         play_client(conn, sk, context, n1, n2, n3);
     } while(0);
     clt_ben.total_times.push_back(all_time);
@@ -275,6 +258,17 @@ int run_server(long port, long n1, long n2, long n3) {
     return 0;
 }
 
+void print_benchmarks()
+{
+    auto times = clt_ben.get_times();
+    clt_ben.print_head();
+    for (auto &t : times) {
+        auto st = mean_std(*t);
+        printf("%.3f ", st.first);
+    }
+    printf("\n");
+}
+
 int main(int argc, char *argv[]) {
     ArgMapping argmap;
     long role = -1;
@@ -294,6 +288,7 @@ int main(int argc, char *argv[]) {
         run_server(port, n1, n2, n3);
     } else if (role == 1) {
         run_client(addr, port, n1, n2, n3);
+        print_benchmarks();
     } else {
 		argmap.usage("General Matrix Multiplication for |N*M| * |M*D|");
 		return -1;
